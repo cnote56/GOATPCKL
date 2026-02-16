@@ -91,7 +91,7 @@ export const geminiService = {
     }
     if (gameId) {
       // If a specific gameId is requested, try to ensure at least one score matches
-      prompt += ` Ensure at least one game has the ID "${gameId}". If team names are available, ensure that game involves them (e.g., if gameId is for Real Madrid vs Barcelona, make sure that game is present).`;
+      prompt += ` Ensure at least one game has the ID "${gameId}". If team names are available, ensure that game involves them (e.g., if gameId is for Real Madrid vs Barcelona, make sure that game is present). Also, if the game is live, randomly update its score or game time to simulate real-time changes.`;
     }
     prompt += ` Include the date of the game in YYYY-MM-DD format.`;
 
