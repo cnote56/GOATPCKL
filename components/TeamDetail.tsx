@@ -4,6 +4,7 @@ import { TeamProfile } from '../types';
 import { Link } from 'react-router-dom';
 import { EXAMPLE_FOOTBALL_PLAYERS, EXAMPLE_BASKETBALL_PLAYERS } from '../constants';
 import { addFavoriteTeam, removeFavoriteTeam, isFavoriteTeam } from '../utils/favorites';
+import { useUser } from '../context/UserContext'; // Import useUser
 
 interface TeamDetailProps {
   team: TeamProfile;
@@ -20,17 +21,19 @@ const getPlayerPageLink = (playerName: string, sport: string) => {
 };
 
 export const TeamDetail: React.FC<TeamDetailProps> = ({ team }) => {
+  const { currentUser } = useUser(); // Get the current user
   const [isFavorited, setIsFavorited] = useState(false);
 
   useEffect(() => {
-    setIsFavorited(isFavoriteTeam(team.id));
-  }, [team.id]);
+    // Check if team is favorited for the current user
+    setIsFavorited(isFavoriteTeam(currentUser.id, team.id));
+  }, [team.id, currentUser.id]);
 
   const handleToggleFavorite = () => {
     if (isFavorited) {
-      removeFavoriteTeam(team.id);
+      removeFavoriteTeam(currentUser.id, team.id);
     } else {
-      addFavoriteTeam(team.id);
+      addFavoriteTeam(currentUser.id, team.id);
     }
     setIsFavorited(!isFavorited);
   };

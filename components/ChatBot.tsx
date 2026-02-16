@@ -4,6 +4,8 @@ import { Chat } from '@google/genai';
 import { geminiService } from '../services/geminiService';
 import { ChatMessage, GroundingLink } from '../types';
 import { LoadingSpinner } from './LoadingSpinner';
+import { useUser } from '../context/UserContext';
+import { addFavoriteTeam, addFollowedGame } from '../utils/favorites';
 
 interface ChatBotProps {
   isOpen: boolean;
@@ -16,6 +18,7 @@ export const ChatBot: React.FC<ChatBotProps> = ({ isOpen, onClose }) => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { currentUser } = useUser();
 
   // Initialize chat session
   useEffect(() => {
@@ -55,6 +58,7 @@ export const ChatBot: React.FC<ChatBotProps> = ({ isOpen, onClose }) => {
           text: result.answer,
           timestamp: new Date(),
           groundingLinks: result.groundingLinks,
+          suggestedAction: result.suggestedAction, // Pass suggested action to message
         };
         setMessages(prev => [...prev, modelMessage]);
       } else {
@@ -67,6 +71,18 @@ export const ChatBot: React.FC<ChatBotProps> = ({ isOpen, onClose }) => {
       setIsLoading(false);
     }
   }, [input, chat, isLoading]);
+
+  const handleSuggestedAction = useCallback((actionType: 'followTeam' | 'followGame', id: string, name: string, homeTeam?: string, awayTeam?: string) => {
+    if (actionType === 'followTeam') {
+      addFavoriteTeam(currentUser.id, id);
+      setMessages(prev => [...prev, { role: 'user', text: `Added "${name}" to your watchlist!`, timestamp: new Date() }]);
+    } else if (actionType === 'followGame' && homeTeam && awayTeam) {
+      addFollowedGame(currentUser.id, id);
+      setMessages(prev => [...prev, { role: 'user', text: `Added "${name}" to your scoreboard!`, timestamp: new Date() }]);
+    }
+    // Optionally close chatbot or provide further instruction
+  }, [currentUser.id]);
+
 
   if (!isOpen) return null;
 
@@ -100,6 +116,22 @@ export const ChatBot: React.FC<ChatBotProps> = ({ isOpen, onClose }) => {
                       </li>
                     ))}
                   </ul>
+                </div>
+              )}
+              {msg.suggestedAction && (
+                <div className="mt-2 pt-2 border-t border-gray-600">
+                  <button
+                    onClick={() => handleSuggestedAction(
+                      msg.suggestedAction!.type,
+                      msg.suggestedAction!.id,
+                      msg.suggestedAction!.name,
+                      msg.suggestedAction!.homeTeam,
+                      msg.suggestedAction!.awayTeam
+                    )}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 text-sm"
+                  >
+                    {msg.suggestedAction.type === 'followTeam' ? `Add "${msg.suggestedAction.name}" to Watchlist` : `Add "${msg.suggestedAction.name}" to Scoreboard`}
+                  </button>
                 </div>
               )}
               <span className="block text-right text-xs text-gray-400 mt-1">

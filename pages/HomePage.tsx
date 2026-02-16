@@ -6,12 +6,17 @@ import { ErrorDisplay } from '../components/ErrorDisplay';
 import { geminiService } from '../services/geminiService';
 import { Score, Sport, QueryStatus } from '../types';
 import { EXAMPLE_SPORTS } from '../constants';
+import { useSearchParams } from 'react-router-dom'; // Import useSearchParams
 
 export const HomePage: React.FC = () => {
   const [scores, setScores] = useState<Score[]>([]);
   const [status, setStatus] = useState<QueryStatus>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [selectedSport, setSelectedSport] = useState<Sport | 'All'>('All');
+  const [searchParams, setSearchParams] = useSearchParams(); // Initialize useSearchParams
+
+  // Get the sport from the URL, default to 'All' if not present
+  const urlSport = searchParams.get('sport');
+  const selectedSport = (urlSport || 'All') as Sport | 'All';
 
   const fetchScores = useCallback(async (sport?: Sport) => {
     setStatus('loading');
@@ -28,12 +33,18 @@ export const HomePage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    // Fetch scores based on the sport from the URL
     fetchScores(selectedSport === 'All' ? undefined : selectedSport);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSport]); // Refetch when selectedSport changes
+  }, [selectedSport, fetchScores]); // Re-fetch when selectedSport (derived from URL) changes
 
   const handleSportChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedSport(e.target.value as Sport | 'All');
+    const newSport = e.target.value as Sport | 'All';
+    if (newSport === 'All') {
+      setSearchParams({}); // Remove sport parameter from URL
+    } else {
+      setSearchParams({ sport: newSport }); // Set sport parameter in URL
+    }
+    // The useEffect above will handle re-fetching based on the URL change
   };
 
   const handleRetry = () => {
@@ -59,7 +70,7 @@ export const HomePage: React.FC = () => {
 
       <div className="flex justify-center mb-8">
         <select
-          value={selectedSport}
+          value={selectedSport} // Control dropdown with state derived from URL
           onChange={handleSportChange}
           className="bg-gray-700 text-gray-100 border border-gray-600 rounded-lg p-3 text-lg focus:ring-emerald-500 focus:border-emerald-500 transition-colors duration-200"
         >
@@ -72,7 +83,14 @@ export const HomePage: React.FC = () => {
         </select>
       </div>
 
-      {status === 'loading' && <LoadingSpinner />}
+      {status === 'loading' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Render multiple skeleton cards for a better loading experience */}
+          {[...Array(6)].map((_, index) => (
+            <ScoreCard key={index} loading={true} />
+          ))}
+        </div>
+      )}
       {status === 'error' && <ErrorDisplay message={error || "Unknown error"} onRetry={handleRetry} />}
       {status === 'success' && scores.length === 0 && (
         <p className="text-center text-gray-400 text-xl">No scores available for selected sport.</p>

@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, GenerateContentResponse, GroundingChunk, Chat } from "@google/genai";
 import { API_KEY, GEMINI_MODEL_TEXT, GEMINI_MODEL_CHAT } from '../constants';
 import {
@@ -7,6 +8,7 @@ import {
   LeagueProfile,
   SearchResult,
   GroundingLink,
+  Odds,
 } from '../types';
 
 if (!API_KEY) {
@@ -75,9 +77,24 @@ const extractGroundingLinks = (response: GenerateContentResponse): GroundingLink
 
 
 export const geminiService = {
-  getLiveScores: async (sport?: string): Promise<Score[]> => {
-    const sportFilter = sport ? ` for ${sport}` : '';
-    const prompt = `Generate a JSON array of 5-7 live or upcoming sports scores for popular leagues${sportFilter}. Ensure a mix of game states (Live, Halftime, Fulltime, Upcoming). Provide realistic team names, scores, and times. Include unique game IDs.`;
+  getLiveScores: async (sport?: string, teamName?: string, playerName?: string, gameId?: string): Promise<Score[]> => {
+    let prompt = `Generate a JSON array of 5-7 live or upcoming sports scores for popular leagues. Ensure a mix of game states (Live, Halftime, Fulltime, Upcoming). Provide realistic team names, scores, and times. Include unique game IDs.`;
+
+    if (sport) {
+      prompt += ` Specifically for ${sport}.`;
+    }
+    if (teamName) {
+      prompt += ` Focus on games involving the team "${teamName}".`;
+    }
+    if (playerName) {
+      prompt += ` Focus on games involving the player "${playerName}".`;
+    }
+    if (gameId) {
+      // If a specific gameId is requested, try to ensure at least one score matches
+      prompt += ` Ensure at least one game has the ID "${gameId}". If team names are available, ensure that game involves them (e.g., if gameId is for Real Madrid vs Barcelona, make sure that game is present).`;
+    }
+    prompt += ` Include the date of the game in YYYY-MM-DD format.`;
+
 
     const scoreSchema = {
       type: Type.OBJECT,
@@ -228,6 +245,29 @@ export const geminiService = {
     return generateContentWithSchema<LeagueProfile>(prompt, leagueProfileSchema);
   },
 
+  getGameOdds: async (gameId: string, homeTeam: string, awayTeam: string): Promise<Odds | undefined> => {
+    const prompt = `Generate realistic JSON betting odds for a game between ${homeTeam} and ${awayTeam} (Game ID: ${gameId}). Include over/under, point spread (e.g., -7.5 for home, +7.5 for away), and moneyline odds for both teams. Assume standard North American odds format (e.g., -150, +130). Also include a lastUpdated timestamp.`;
+
+    const oddsSchema = {
+      type: Type.OBJECT,
+      properties: {
+        gameId: { type: Type.STRING },
+        homeTeam: { type: Type.STRING },
+        awayTeam: { type: Type.STRING },
+        overUnder: { type: Type.NUMBER },
+        spread: { type: Type.NUMBER },
+        moneylineHome: { type: Type.NUMBER },
+        moneylineAway: { type: Type.NUMBER },
+        moneylineDraw: { type: Type.NUMBER, description: 'Optional for sports with draws' },
+        lastUpdated: { type: Type.STRING, description: 'ISO 8601 timestamp' },
+      },
+      required: ['gameId', 'homeTeam', 'awayTeam', 'overUnder', 'spread', 'moneylineHome', 'moneylineAway', 'lastUpdated'],
+      propertyOrdering: ['gameId', 'homeTeam', 'awayTeam', 'overUnder', 'spread', 'moneylineHome', 'moneylineAway', 'moneylineDraw', 'lastUpdated'],
+    };
+
+    return generateContentWithSchema<Odds>(prompt, oddsSchema);
+  },
+
   searchSportsData: async (query: string): Promise<SearchResult | undefined> => {
     try {
       const ai = getGeminiInstance();
@@ -258,30 +298,39 @@ export const geminiService = {
     return ai.chats.create({
       model: GEMINI_MODEL_CHAT, // Use Pro for conversational tasks
       config: {
-        systemInstruction: systemInstruction || 'You are a helpful sports assistant for the URScoreCard app. Provide concise and accurate information about sports, players, teams, and leagues. Use Google Search grounding to provide up-to-date details when necessary.',
+        systemInstruction: systemInstruction || 'You are a helpful sports assistant for the URScoreCard app. Provide concise and accurate information about sports, players, teams, and leagues. Use Google Search grounding to provide up-to-date details when necessary. If a specific team or game is clearly identifiable in the user\'s query and a \'follow\' action seems appropriate, you can optionally include an action tag at the end of your response in the format `[ACTION:type:ID:Name(:HomeTeam:AwayTeam)]`. For example, for a team: `[ACTION:followTeam:RealMadridID:Real Madrid]`, or for a game: `[ACTION:followGame:GameID123:Real Madrid vs Barcelona:Real Madrid:Barcelona]`. Do not output this tag unless a clear actionable entity is present.',
       },
     });
   },
 
   sendChatMessage: async (chat: Chat, message: string): Promise<SearchResult | undefined> => {
     try {
-      // Chat messages are sent via sendMessage. When including config (like tools),
-      // the request payload must conform to GenerateContentParameters,
-      // which uses `contents` and `config` at the top level.
-      //
-      // Fix: `chat.sendMessage` only accepts the `message` parameter at the top level,
-      // not `contents` when config is also provided.
       const response: GenerateContentResponse = await chat.sendMessage({
-        message: message, // Corrected from `contents` to `message`
+        message: message,
         config: {
           tools: [{ googleSearch: {} }],
         },
       });
 
-      const answer = response.text || "I'm sorry, I couldn't generate a response.";
+      let answer = response.text || "I'm sorry, I couldn't generate a response.";
       const groundingLinks = extractGroundingLinks(response);
+      let suggestedAction;
 
-      return { answer, groundingLinks };
+      // Parse for ACTION tag at the end of the response
+      const actionTagRegex = /\[ACTION:(followTeam|followGame):([^:]+):([^:]+)(?::([^:]+):([^:]+))?\]$/;
+      const match = answer.match(actionTagRegex);
+
+      if (match) {
+        const [, type, id, name, homeTeam, awayTeam] = match;
+        suggestedAction = { type, id, name };
+        if (type === 'followGame' && homeTeam && awayTeam) {
+          suggestedAction.homeTeam = homeTeam;
+          suggestedAction.awayTeam = awayTeam;
+        }
+        answer = answer.replace(actionTagRegex, '').trim(); // Remove the action tag from the displayed answer
+      }
+
+      return { answer, groundingLinks, suggestedAction };
 
     } catch (error) {
       console.error("Error sending chat message:", error);

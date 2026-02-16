@@ -2,16 +2,16 @@
 // --- Core Data Interfaces ---
 
 export interface Score {
-  gameId: string;
-  sport: string;
-  homeTeam: string;
-  awayTeam: string;
-  homeScore: number;
-  awayScore: number;
-  gameState: string; // e.g., "Live", "Halftime", "Fulltime", "Upcoming"
-  gameTime: string; // e.g., "12:30 PM", "FT", "Tomorrow 7 PM"
-  league: string;
-  date: string; // YYYY-MM-DD for grouping
+  gameId?: string; // Made optional for loading state
+  sport?: string; // Made optional for loading state
+  homeTeam?: string; // Made optional for loading state
+  awayTeam?: string; // Made optional for loading state
+  homeScore?: number; // Made optional for loading state
+  awayScore?: number; // Made optional for loading state
+  gameState?: string; // Made optional for loading state
+  gameTime?: string; // Made optional for loading state
+  league?: string; // Made optional for loading state
+  date?: string; // YYYY-MM-DD for grouping // Made optional for loading state
 }
 
 export interface PlayerStat {
@@ -78,6 +78,19 @@ export interface LeagueProfile {
   logoUrl: string;
 }
 
+// New interface for betting odds
+export interface Odds {
+  gameId: string;
+  homeTeam: string;
+  awayTeam: string;
+  overUnder: number; // Total points/goals
+  spread: number;    // E.g., -7.5 for home team, +7.5 for away team
+  moneylineHome: number; // Odds for home team to win (e.g., -150)
+  moneylineAway: number; // Odds for away team to win (e.g., +130)
+  moneylineDraw?: number; // Optional for sports with draws
+  lastUpdated: string; // Timestamp
+}
+
 // --- API Response Types (for Gemini) ---
 
 export interface GeminiResponse<T> {
@@ -90,9 +103,17 @@ export interface GroundingLink {
   title?: string;
 }
 
+// Updated SearchResult to include optional suggestedAction
 export interface SearchResult {
   answer: string;
   groundingLinks?: GroundingLink[];
+  suggestedAction?: {
+    type: 'followTeam' | 'followGame';
+    id: string;
+    name: string; // Name to display for the action (e.g., Team Name or Game Description)
+    homeTeam?: string; // Only for followGame
+    awayTeam?: string; // Only for followGame
+  };
 }
 
 export interface ChatMessage {
@@ -100,6 +121,13 @@ export interface ChatMessage {
   text: string;
   timestamp: Date;
   groundingLinks?: GroundingLink[];
+  suggestedAction?: {
+    type: 'followTeam' | 'followGame';
+    id: string;
+    name: string;
+    homeTeam?: string; // Only for followGame
+    awayTeam?: string; // Only for followGame
+  };
 }
 
 // --- Utility Types ---
@@ -109,6 +137,8 @@ export enum Sport {
   BASKETBALL = 'Basketball',
   TENNIS = 'Tennis',
   HOCKEY = 'Hockey',
+  RUGBY = 'Rugby', // Added Rugby
+  FOOTY = 'Footy', // Added Australian rules football (Footy)
 }
 
 export type QueryStatus = 'idle' | 'loading' | 'success' | 'error';

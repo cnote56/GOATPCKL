@@ -6,6 +6,8 @@ export const EXAMPLE_SPORTS: Sport[] = [
   Sport.BASKETBALL,
   Sport.TENNIS,
   Sport.HOCKEY,
+  Sport.RUGBY, // Added Rugby
+  Sport.FOOTY, // Added Footy (Australian Rules Football)
 ];
 
 export const EXAMPLE_FOOTBALL_TEAMS: string[] = [

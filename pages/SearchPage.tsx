@@ -2,34 +2,65 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { geminiService } from '../services/geminiService';
-import { SearchResult, QueryStatus } from '../types';
+import { SearchResult, QueryStatus, Score } from '../types';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorDisplay } from '../components/ErrorDisplay';
+import { ScoreCard } from '../components/ScoreCard'; // Import ScoreCard
 
 export const SearchPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const query = searchParams.get('query');
   const [searchResult, setSearchResult] = useState<SearchResult | undefined>(undefined);
+  const [scores, setScores] = useState<Score[]>([]);
+  const [isScoresResult, setIsScoresResult] = useState(false);
   const [status, setStatus] = useState<QueryStatus>('idle');
   const [error, setError] = useState<string | null>(null);
 
   const fetchSearchResult = useCallback(async (searchQuery: string) => {
     setStatus('loading');
     setError(null);
-    setSearchResult(undefined); // Clear previous results
+    setSearchResult(undefined);
+    setScores([]); // Clear scores too
+    setIsScoresResult(false); // Reset this flag
+
     try {
-      const result = await geminiService.searchSportsData(searchQuery);
-      if (result) {
-        setSearchResult(result);
+      // First, try to get scores for the query as a team name
+      const fetchedScores = await geminiService.getLiveScores(undefined, searchQuery);
+      if (fetchedScores && fetchedScores.length > 0) {
+        setScores(fetchedScores);
+        setIsScoresResult(true);
         setStatus('success');
       } else {
-        setError("Could not retrieve search results.");
-        setStatus('error');
+        // If no scores found for the team, or if the query wasn't a team,
+        // fall back to a general search.
+        const result = await geminiService.searchSportsData(searchQuery);
+        if (result) {
+          setSearchResult(result);
+          setIsScoresResult(false);
+          setStatus('success');
+        } else {
+          setError("Could not retrieve any results for your query.");
+          setStatus('error');
+        }
       }
     } catch (err) {
-      console.error("Failed to fetch search result:", err);
-      setError("Failed to perform search. Please try again later.");
-      setStatus('error');
+      console.error("Failed to perform specific or general search:", err);
+      // Even if getLiveScores failed, try searchSportsData as a fallback
+      try {
+        const result = await geminiService.searchSportsData(searchQuery);
+        if (result) {
+          setSearchResult(result);
+          setIsScoresResult(false);
+          setStatus('success');
+        } else {
+          setError("Failed to perform search. Please try again later.");
+          setStatus('error');
+        }
+      } catch (generalErr) {
+        console.error("Failed during general search fallback:", generalErr);
+        setError("Failed to perform search. Please try again later.");
+        setStatus('error');
+      }
     }
   }, []);
 
@@ -48,6 +79,18 @@ export const SearchPage: React.FC = () => {
     }
   };
 
+  // Group scores by date for better readability (similar to HomePage)
+  const groupedScores = scores.reduce((acc, score) => {
+    const date = score.date || 'Unknown Date';
+    if (!acc[date]) {
+      acc[date] = [];
+    }
+    acc[date].push(score);
+    return acc;
+  }, {} as Record<string, Score[]>);
+
+  const sortedDates = Object.keys(groupedScores).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+
   return (
     <div className="p-4">
       <h1 className="text-4xl font-extrabold text-center text-emerald-400 mb-8">Search Results</h1>
@@ -59,7 +102,30 @@ export const SearchPage: React.FC = () => {
 
       {status === 'error' && <ErrorDisplay message={error || "Unknown error during search."} onRetry={handleRetry} />}
 
-      {status === 'success' && searchResult && (
+      {status === 'success' && isScoresResult && scores.length > 0 && (
+        <div className="max-w-5xl mx-auto">
+          <h2 className="text-2xl font-bold text-emerald-300 mb-4 text-center">Live Scores & Upcoming Games for "{query}"</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {sortedDates.map(date => (
+              <React.Fragment key={date}>
+                {/* Conditionally show date header only if there are scores for that date */}
+                {groupedScores[date].length > 0 && (
+                  <div className="md:col-span-full">
+                    <h3 className="text-xl font-bold text-emerald-300 mb-3 border-b border-gray-700 pb-2">
+                      {date === new Date().toISOString().slice(0, 10) ? 'Today' : date}
+                    </h3>
+                  </div>
+                )}
+                {groupedScores[date].map((score) => (
+                  <ScoreCard key={score.gameId} score={score} />
+                ))}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {status === 'success' && !isScoresResult && searchResult && (
         <div className="bg-gray-800 rounded-lg shadow-xl p-6 md:p-8 max-w-3xl mx-auto">
           <h2 className="text-2xl font-bold text-emerald-300 mb-4">Answer:</h2>
           <p className="text-gray-200 leading-relaxed mb-6">{searchResult.answer}</p>
@@ -84,6 +150,13 @@ export const SearchPage: React.FC = () => {
             </div>
           )}
         </div>
+      )}
+
+      {status === 'success' && !isScoresResult && !searchResult && (
+        <p className="text-center text-gray-400 text-xl">No general information found for your query.</p>
+      )}
+      {status === 'success' && isScoresResult && scores.length === 0 && (
+         <p className="text-center text-gray-400 text-xl">No scores available for "{query}".</p>
       )}
     </div>
   );

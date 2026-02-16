@@ -7,8 +7,10 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorDisplay } from '../components/ErrorDisplay';
 import { Link } from 'react-router-dom';
 import { removeFavoritePlayer, removeFavoriteTeam } from '../utils/favorites';
+import { useUser } from '../context/UserContext'; // Import useUser
 
 export const MyWatchlistPage: React.FC = () => {
+  const { currentUser } = useUser(); // Get the current user
   const [favoritePlayers, setFavoritePlayers] = useState<PlayerProfile[]>([]);
   const [favoriteTeams, setFavoriteTeams] = useState<TeamProfile[]>([]);
   const [playerStatus, setPlayerStatus] = useState<QueryStatus>('idle');
@@ -19,7 +21,7 @@ export const MyWatchlistPage: React.FC = () => {
   const fetchFavorites = useCallback(async () => {
     // Fetch Favorite Players
     setPlayerStatus('loading');
-    const playerIds = getFavoritePlayers();
+    const playerIds = getFavoritePlayers(currentUser.id); // Pass userId
     const playerPromises = playerIds.map(async (id) => {
       try {
         const playerProfile = await geminiService.getPlayerProfile(id); // Using ID as name for simplicity, assume Gemini handles this.
@@ -37,7 +39,7 @@ export const MyWatchlistPage: React.FC = () => {
 
     // Fetch Favorite Teams
     setTeamStatus('loading');
-    const teamIds = getFavoriteTeams();
+    const teamIds = getFavoriteTeams(currentUser.id); // Pass userId
     const teamPromises = teamIds.map(async (id) => {
       try {
         const teamProfile = await geminiService.getTeamProfile(id); // Using ID as name for simplicity, assume Gemini handles this.
@@ -52,14 +54,14 @@ export const MyWatchlistPage: React.FC = () => {
     const fetchedTeams = (await Promise.all(teamPromises)).filter((t): t is TeamProfile => t !== null);
     setFavoriteTeams(fetchedTeams);
     setTeamStatus('success');
-  }, []);
+  }, [currentUser.id]); // Add currentUser.id to dependencies
 
   useEffect(() => {
     fetchFavorites();
   }, [fetchFavorites]);
 
   const handleRemovePlayer = (id: string) => {
-    removeFavoritePlayer(id);
+    removeFavoritePlayer(currentUser.id, id); // Pass userId
     setFavoritePlayers(prev => prev.filter(p => p.id !== id));
     setPlayerErrors(prev => {
       const newErrors = { ...prev };
@@ -69,7 +71,7 @@ export const MyWatchlistPage: React.FC = () => {
   };
 
   const handleRemoveTeam = (id: string) => {
-    removeFavoriteTeam(id);
+    removeFavoriteTeam(currentUser.id, id); // Pass userId
     setFavoriteTeams(prev => prev.filter(t => t.id !== id));
     setTeamErrors(prev => {
       const newErrors = { ...prev };

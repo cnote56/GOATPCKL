@@ -4,6 +4,7 @@ import { PlayerProfile } from '../types';
 import Plotly from 'plotly.js-dist';
 import { Link } from 'react-router-dom';
 import { addFavoritePlayer, removeFavoritePlayer, isFavoritePlayer } from '../utils/favorites';
+import { useUser } from '../context/UserContext'; // Import useUser
 
 interface PlayerDetailProps {
   player: PlayerProfile;
@@ -11,17 +12,19 @@ interface PlayerDetailProps {
 
 export const PlayerDetail: React.FC<PlayerDetailProps> = ({ player }) => {
   const chartRef = useRef<HTMLDivElement>(null);
+  const { currentUser } = useUser(); // Get the current user
   const [isFavorited, setIsFavorited] = useState(false);
 
   useEffect(() => {
-    setIsFavorited(isFavoritePlayer(player.id));
-  }, [player.id]);
+    // Check if player is favorited for the current user
+    setIsFavorited(isFavoritePlayer(currentUser.id, player.id));
+  }, [player.id, currentUser.id]);
 
   const handleToggleFavorite = () => {
     if (isFavorited) {
-      removeFavoritePlayer(player.id);
+      removeFavoritePlayer(currentUser.id, player.id);
     } else {
-      addFavoritePlayer(player.id);
+      addFavoritePlayer(currentUser.id, player.id);
     }
     setIsFavorited(!isFavorited);
   };
