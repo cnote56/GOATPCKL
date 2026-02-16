@@ -91,6 +91,14 @@ export interface Odds {
   lastUpdated: string; // Timestamp
 }
 
+export interface NewsArticle {
+  title: string;
+  summary: string;
+  source: string;
+  date: string; // YYYY-MM-DD
+  imageUrl?: string;
+}
+
 // --- API Response Types (for Gemini) ---
 
 export interface GeminiResponse<T> {
@@ -139,6 +147,11 @@ export enum Sport {
   HOCKEY = 'Hockey',
   RUGBY = 'Rugby', // Added Rugby
   FOOTY = 'Footy', // Added Australian rules football (Footy)
+  SOCCER = 'Soccer', // Added Soccer for header nav
+  BASEBALL = 'Baseball', // Added Baseball for header nav
+  GOLF = 'Golf', // Added Golf for header nav
+  SNOOKER = 'Snooker', // Added Snooker for header nav
+  VOLLEYBALL = 'Volleyball' // Removed trailing comma here
 }
 
 export type QueryStatus = 'idle' | 'loading' | 'success' | 'error';

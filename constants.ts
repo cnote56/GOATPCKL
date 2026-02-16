@@ -31,7 +31,7 @@ export const EXAMPLE_BASKETBALL_PLAYERS: string[] = [
 ];
 
 export const EXAMPLE_LEAGUES: string[] = [
-  'La Liga', 'Premier League', 'NBA', 'Serie A', 'Bundesliga', 'Ligue 1'
+  'La Liga', 'Premier League', 'NBA', 'Serie A', 'Bundesliga', 'Ligue 1' // Removed trailing comma here
 ];
 
 export const API_KEY = process.env.API_KEY;
@@ -39,3 +39,4 @@ export const API_KEY = process.env.API_KEY;
 export const GEMINI_MODEL_TEXT = 'gemini-3-flash-preview';
 export const GEMINI_MODEL_IMAGE = 'gemini-2.5-flash-image';
 export const GEMINI_MODEL_CHAT = 'gemini-3-pro-preview';
+    

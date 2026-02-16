@@ -36,3 +36,4 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ message, onRetry }) 
     </div>
   );
 };
+    

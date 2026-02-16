@@ -8,8 +8,43 @@
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+      :root {
+        /* Dark Theme Defaults */
+        --color-bg-primary: #1a1a1c; /* Similar to Flashscore's deep dark */
+        --color-bg-secondary: #222225; /* Cards, panels */
+        --color-bg-tertiary: #2e2e31; /* Header, sidebar */
+        --color-text-primary: #f0f0f0; /* Light text */
+        --color-text-secondary: #a0a0a0; /* Grayed out text */
+        --color-text-accent: #00e676; /* Emerald/Green accent */
+        --color-border: #444447; /* Subtle borders */
+        --color-live: #ef4444; /* Red for live */
+        --color-favorite: #facc15; /* Yellow for favorites */
+        --color-followed: #60a5fa; /* Blue for followed games */
+        --color-link: #4299e1; /* Blue for links */
+        --color-hover-bg: #3b3b3e; /* Hover background */
+      }
+
+      body.light-theme {
+        /* Light Theme Overrides */
+        --color-bg-primary: #ffffff;
+        --color-bg-secondary: #f0f0f0;
+        --color-bg-tertiary: #e0e0e0;
+        --color-text-primary: #1a1a1c;
+        --color-text-secondary: #555555;
+        --color-text-accent: #008040;
+        --color-border: #cccccc;
+        --color-live: #dc2626;
+        --color-favorite: #f59e0b;
+        --color-followed: #3b82f6;
+        --color-link: #3b82f6;
+        --color-hover-bg: #e5e7eb;
+      }
+
       body {
         font-family: 'Inter', sans-serif;
+        background-color: var(--color-bg-primary);
+        color: var(--color-text-primary);
+        transition: background-color 0.3s ease, color 0.3s ease;
       }
       /* Custom scrollbar hide for consistency with Flashscore UI */
       .scrollbar-hide::-webkit-scrollbar {
@@ -19,6 +54,20 @@
         -ms-overflow-style: none;  /* IE and Edge */
         scrollbar-width: none;  /* Firefox */
       }
+
+      /* Tailwind arbitrary values using CSS variables */
+      .bg-primary { background-color: var(--color-bg-primary); }
+      .bg-secondary { background-color: var(--color-bg-secondary); }
+      .bg-tertiary { background-color: var(--color-bg-tertiary); }
+      .text-primary { color: var(--color-text-primary); }
+      .text-secondary { color: var(--color-text-secondary); }
+      .text-accent { color: var(--color-text-accent); }
+      .border-primary { border-color: var(--color-border); }
+      .bg-live { background-color: var(--color-live); }
+      .text-favorite { color: var(--color-favorite); }
+      .text-followed { color: var(--color-followed); }
+      .text-link { color: var(--color-link); }
+      .hover-bg-secondary:hover { background-color: var(--color-hover-bg); }
     </style>
 <script type="importmap">
 {
@@ -33,8 +82,9 @@
 }
 </script>
 </head>
-<body class="bg-gray-900 text-gray-100 antialiased">
+<body class="bg-primary text-primary antialiased">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
 </body>
 </html>
+    

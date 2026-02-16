@@ -9,6 +9,7 @@ import {
   SearchResult,
   GroundingLink,
   Odds,
+  NewsArticle, // Import new NewsArticle type
 } from '../types';
 
 if (!API_KEY) {
@@ -121,6 +122,31 @@ export const geminiService = {
 
     const scores = await generateContentWithSchema<Score[]>(prompt, arraySchema);
     return scores || [];
+  },
+
+  getNewsArticles: async (entityName: string, category: 'team' | 'player' | 'league' = 'team'): Promise<NewsArticle[]> => {
+    const prompt = `Generate a JSON array of 3-5 concise and catchy news headlines and summaries about recent events related to the sports ${category} "${entityName}". Include a plausible source (e.g., ESPN, BBC Sport, The Athletic) and a recent date in 'YYYY-MM-DD' format. Also include a placeholder image URL from 'https://picsum.photos/400/200?random={seed}' where seed is unique.`;
+
+    const newsArticleSchema = {
+      type: Type.OBJECT,
+      properties: {
+        title: { type: Type.STRING },
+        summary: { type: Type.STRING },
+        source: { type: Type.STRING },
+        date: { type: Type.STRING, description: 'YYYY-MM-DD' },
+        imageUrl: { type: Type.STRING, description: 'URL for news image' },
+      },
+      required: ['title', 'summary', 'source', 'date', 'imageUrl'],
+      propertyOrdering: ['title', 'summary', 'source', 'date', 'imageUrl'],
+    };
+
+    const arraySchema = {
+      type: Type.ARRAY,
+      items: newsArticleSchema,
+    };
+
+    const articles = await generateContentWithSchema<NewsArticle[]>(prompt, arraySchema);
+    return articles || [];
   },
 
   getPlayerProfile: async (playerName: string): Promise<PlayerProfile | undefined> => {
@@ -341,3 +367,4 @@ export const geminiService = {
     }
   },
 };
+    

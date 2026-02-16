@@ -21,7 +21,7 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 const predefinedUsers: User[] = [
   { id: 'user1', name: 'User 1' },
   { id: 'user2', name: 'User 2' },
-  { id: 'user3', name: 'User 3' },
+  { id: 'user3', name: 'User 3' } // Removed trailing comma here
 ];
 
 interface UserProviderProps {

@@ -5,7 +5,7 @@ import { geminiService } from '../services/geminiService';
 import { SearchResult, QueryStatus, Score } from '../types';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorDisplay } from '../components/ErrorDisplay';
-import { ScoreCard } from '../components/ScoreCard'; // Import ScoreCard
+import { ScoreCard } from '../components/ScoreCard';
 
 export const SearchPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -20,8 +20,8 @@ export const SearchPage: React.FC = () => {
     setStatus('loading');
     setError(null);
     setSearchResult(undefined);
-    setScores([]); // Clear scores too
-    setIsScoresResult(false); // Reset this flag
+    setScores([]);
+    setIsScoresResult(false);
 
     try {
       // First, try to get scores for the query as a team name
@@ -45,7 +45,6 @@ export const SearchPage: React.FC = () => {
       }
     } catch (err) {
       console.error("Failed to perform specific or general search:", err);
-      // Even if getLiveScores failed, try searchSportsData as a fallback
       try {
         const result = await geminiService.searchSportsData(searchQuery);
         if (result) {
@@ -92,10 +91,10 @@ export const SearchPage: React.FC = () => {
   const sortedDates = Object.keys(groupedScores).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
   return (
-    <div className="p-4">
-      <h1 className="text-4xl font-extrabold text-center text-emerald-400 mb-8">Search Results</h1>
-      <p className="text-xl text-center text-gray-300 mb-6">
-        Query: <span className="font-semibold text-emerald-300">"{query}"</span>
+    <div className="p-4 bg-secondary rounded-lg shadow-xl">
+      <h1 className="text-2xl font-extrabold text-center text-accent mb-6">Search Results</h1>
+      <p className="text-lg text-center text-secondary mb-6">
+        Query: <span className="font-semibold text-primary">"{query}"</span>
       </p>
 
       {status === 'loading' && <LoadingSpinner />}
@@ -104,14 +103,13 @@ export const SearchPage: React.FC = () => {
 
       {status === 'success' && isScoresResult && scores.length > 0 && (
         <div className="max-w-5xl mx-auto">
-          <h2 className="text-2xl font-bold text-emerald-300 mb-4 text-center">Live Scores & Upcoming Games for "{query}"</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <h2 className="text-xl font-bold text-accent mb-4 text-center">Live Scores & Upcoming Games for "{query}"</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {sortedDates.map(date => (
               <React.Fragment key={date}>
-                {/* Conditionally show date header only if there are scores for that date */}
                 {groupedScores[date].length > 0 && (
-                  <div className="md:col-span-full">
-                    <h3 className="text-xl font-bold text-emerald-300 mb-3 border-b border-gray-700 pb-2">
+                  <div className="col-span-full">
+                    <h3 className="text-lg font-bold text-accent mb-2 border-b border-border pb-1">
                       {date === new Date().toISOString().slice(0, 10) ? 'Today' : date}
                     </h3>
                   </div>
@@ -126,21 +124,21 @@ export const SearchPage: React.FC = () => {
       )}
 
       {status === 'success' && !isScoresResult && searchResult && (
-        <div className="bg-gray-800 rounded-lg shadow-xl p-6 md:p-8 max-w-3xl mx-auto">
-          <h2 className="text-2xl font-bold text-emerald-300 mb-4">Answer:</h2>
-          <p className="text-gray-200 leading-relaxed mb-6">{searchResult.answer}</p>
+        <div className="bg-tertiary rounded-lg shadow-md p-6 md:p-8 max-w-3xl mx-auto">
+          <h2 className="text-xl font-bold text-accent mb-4">Answer:</h2>
+          <p className="text-primary leading-relaxed mb-6">{searchResult.answer}</p>
 
           {searchResult.groundingLinks && searchResult.groundingLinks.length > 0 && (
-            <div className="mt-6 border-t border-gray-700 pt-6">
-              <h3 className="text-xl font-bold text-emerald-400 mb-3">Sources:</h3>
+            <div className="mt-6 border-t border-border pt-6">
+              <h3 className="text-lg font-bold text-accent mb-3">Sources:</h3>
               <ul className="list-disc list-inside space-y-2">
                 {searchResult.groundingLinks.map((link, index) => (
-                  <li key={index} className="text-gray-300">
+                  <li key={index} className="text-secondary">
                     <a
                       href={link.uri}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-400 hover:underline transition-colors duration-200"
+                      className="text-link hover:underline transition-colors duration-200"
                     >
                       {link.title || link.uri}
                     </a>
@@ -153,11 +151,12 @@ export const SearchPage: React.FC = () => {
       )}
 
       {status === 'success' && !isScoresResult && !searchResult && (
-        <p className="text-center text-gray-400 text-xl">No general information found for your query.</p>
+        <p className="text-center text-secondary text-xl">No general information found for your query.</p>
       )}
       {status === 'success' && isScoresResult && scores.length === 0 && (
-         <p className="text-center text-gray-400 text-xl">No scores available for "{query}".</p>
+         <p className="text-center text-secondary text-xl">No scores available for "{query}".</p>
       )}
     </div>
   );
 };
+    

@@ -1,10 +1,14 @@
 
-import React, { useState, useEffect } from 'react';
-import { TeamProfile } from '../types';
+import React, { useState, useEffect, useCallback } from 'react';
+import { TeamProfile, QueryStatus, Score, NewsArticle } from '../types';
 import { Link } from 'react-router-dom';
 import { EXAMPLE_FOOTBALL_PLAYERS, EXAMPLE_BASKETBALL_PLAYERS } from '../constants';
 import { addFavoriteTeam, removeFavoriteTeam, isFavoriteTeam } from '../utils/favorites';
-import { useUser } from '../context/UserContext'; // Import useUser
+import { useUser } from '../context/UserContext';
+import { geminiService } from '../services/geminiService';
+import { LoadingSpinner } from './LoadingSpinner';
+import { ErrorDisplay } from './ErrorDisplay';
+import { ScoreCard } from './ScoreCard';
 
 interface TeamDetailProps {
   team: TeamProfile;
@@ -21,11 +25,17 @@ const getPlayerPageLink = (playerName: string, sport: string) => {
 };
 
 export const TeamDetail: React.FC<TeamDetailProps> = ({ team }) => {
-  const { currentUser } = useUser(); // Get the current user
+  const { currentUser } = useUser();
   const [isFavorited, setIsFavorited] = useState(false);
+  const [activeTab, setActiveTab] = useState<'SUMMARY' | 'NEWS' | 'RESULTS' | 'FIXTURES' | 'DRAW'>('SUMMARY');
+  const [news, setNews] = useState<NewsArticle[]>([]);
+  const [newsStatus, setNewsStatus] = useState<QueryStatus>('idle');
+  const [results, setResults] = useState<Score[]>([]);
+  const [fixtures, setFixtures] = useState<Score[]>([]);
+  const [gamesStatus, setGamesStatus] = useState<QueryStatus>('idle');
+
 
   useEffect(() => {
-    // Check if team is favorited for the current user
     setIsFavorited(isFavoriteTeam(currentUser.id, team.id));
   }, [team.id, currentUser.id]);
 
@@ -38,25 +48,62 @@ export const TeamDetail: React.FC<TeamDetailProps> = ({ team }) => {
     setIsFavorited(!isFavorited);
   };
 
+  const fetchTeamNews = useCallback(async () => {
+    setNewsStatus('loading');
+    try {
+      const fetchedNews = await geminiService.getNewsArticles(team.name);
+      setNews(fetchedNews || []);
+      setNewsStatus('success');
+    } catch (error) {
+      console.error("Failed to fetch team news:", error);
+      setNewsStatus('error');
+    }
+  }, [team.name]);
+
+  const fetchTeamGames = useCallback(async () => {
+    setGamesStatus('loading');
+    try {
+      const allGames = await geminiService.getLiveScores(team.sport, team.name);
+      const pastGames = allGames.filter(g => g.gameState === 'Fulltime');
+      const upcomingGames = allGames.filter(g => g.gameState === 'Upcoming' || g.gameState === 'Live' || g.gameState === 'Halftime');
+      setResults(pastGames.sort((a, b) => new Date(b.date || '').getTime() - new Date(a.date || '').getTime()));
+      setFixtures(upcomingGames.sort((a, b) => new Date(a.date || '').getTime() - new Date(b.date || '').getTime()));
+      setGamesStatus('success');
+    } catch (error) {
+      console.error("Failed to fetch team games:", error);
+      setGamesStatus('error');
+    }
+  }, [team.sport, team.name]);
+
+
+  useEffect(() => {
+    if (activeTab === 'NEWS' && newsStatus === 'idle') {
+      fetchTeamNews();
+    } else if ((activeTab === 'RESULTS' || activeTab === 'FIXTURES') && gamesStatus === 'idle') {
+      fetchTeamGames();
+    }
+  }, [activeTab, newsStatus, gamesStatus, fetchTeamNews, fetchTeamGames]);
+
+
   return (
-    <div className="bg-gray-800 rounded-lg shadow-xl p-6 md:p-8">
+    <div className="bg-secondary rounded-lg shadow-xl p-4 md:p-6">
       <div className="flex flex-col md:flex-row items-center md:items-start md:space-x-8 mb-8">
         <img
           src={team.logoUrl || `https://picsum.photos/150/150?random=${team.id}`}
           alt={`${team.name} logo`}
-          className="w-36 h-36 object-contain rounded-full border-4 border-emerald-500 bg-gray-900 p-2 mb-6 md:mb-0 shadow-md"
+          className="w-32 h-32 object-contain rounded-full border-4 border-accent bg-tertiary p-2 mb-6 md:mb-0 shadow-md"
         />
         <div className="text-center md:text-left flex-grow">
           <div className="flex items-center justify-center md:justify-start mb-2">
-            <h1 className="text-4xl font-extrabold text-emerald-400 mr-4">{team.name}</h1>
+            <h1 className="text-3xl font-extrabold text-accent mr-4">{team.name}</h1>
             <button
               onClick={handleToggleFavorite}
               aria-label={isFavorited ? "Remove from favorites" : "Add to favorites"}
-              className="p-2 rounded-full hover:bg-gray-700 transition-colors"
+              className="p-2 rounded-full hover-bg-secondary text-secondary transition-colors"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                className={`h-8 w-8 ${isFavorited ? 'text-yellow-400 fill-current' : 'text-gray-400'}`}
+                className={`h-6 w-6 ${isFavorited ? 'text-favorite fill-current' : ''}`}
                 viewBox="0 0 20 20"
                 fill="currentColor"
               >
@@ -64,61 +111,142 @@ export const TeamDetail: React.FC<TeamDetailProps> = ({ team }) => {
               </svg>
             </button>
           </div>
-          <p className="text-xl text-gray-300 mb-4">
+          <p className="text-lg text-secondary mb-4">
             {team.sport} •{' '}
-            <Link to={`/league/${encodeURIComponent(team.league)}`} className="hover:underline text-emerald-300">
+            <Link to={`/league/${encodeURIComponent(team.league)}`} className="hover:underline text-link">
               {team.league}
             </Link>
           </p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-gray-400 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-secondary mb-6">
             <div>
               <span className="block font-semibold">Wins:</span>
-              <span className="text-lg">{team.wins}</span>
+              <span className="text-lg text-primary">{team.wins}</span>
             </div>
             <div>
               <span className="block font-semibold">Losses:</span>
-              <span className="text-lg">{team.losses}</span>
+              <span className="text-lg text-primary">{team.losses}</span>
             </div>
             {team.draws !== undefined && (
               <div>
                 <span className="block font-semibold">Draws:</span>
-                <span className="text-lg">{team.draws}</span>
+                <span className="text-lg text-primary">{team.draws}</span>
               </div>
             )}
             <div>
               <span className="block font-semibold">Points:</span>
-              <span className="text-lg">{team.points}</span>
+              <span className="text-lg text-primary">{team.points}</span>
             </div>
           </div>
-          <p className="text-gray-300 leading-relaxed">
+          <p className="text-primary leading-relaxed">
             <span className="font-semibold">Coach:</span> {team.coach} <br />
             <span className="font-semibold">Stadium:</span> {team.stadium}
           </p>
         </div>
       </div>
 
-      <div className="mt-10 border-t border-gray-700 pt-8">
-        <h2 className="text-3xl font-bold text-emerald-400 mb-6 text-center">Key Players</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {team.members.map((member) => (
-            <Link to={getPlayerPageLink(member.name, team.sport)} key={member.id} className="block">
-              <div className="bg-gray-900 rounded-lg p-4 flex items-center space-x-4 hover:bg-gray-700 transition-colors duration-200">
-                <img
-                  src={`https://picsum.photos/60/60?random=${member.id.charCodeAt(0)}`}
-                  alt={`${member.name}`}
-                  className="w-16 h-16 object-cover rounded-full border-2 border-emerald-500"
-                />
-                <div>
-                  <h3 className="text-xl font-semibold text-gray-100">{member.name}</h3>
-                  <p className="text-gray-400 text-sm">
-                    {member.position} {member.jerseyNumber ? `(#${member.jerseyNumber})` : ''}
-                  </p>
-                </div>
-              </div>
-            </Link>
+      {/* Tab Navigation */}
+      <div className="border-b border-border mb-6 overflow-x-auto scrollbar-hide">
+        <nav className="flex -mb-px text-sm font-medium">
+          {['SUMMARY', 'NEWS', 'RESULTS', 'FIXTURES', 'DRAW'].map(tab => (
+            <button
+              key={tab}
+              className={`whitespace-nowrap py-3 px-4 border-b-2
+                ${activeTab === tab ? 'border-accent text-accent' : 'border-transparent text-secondary hover:text-primary hover:border-border'}
+                focus:outline-none transition-colors duration-200`}
+              onClick={() => setActiveTab(tab as any)}
+            >
+              {tab}
+            </button>
           ))}
-        </div>
+        </nav>
+      </div>
+
+      {/* Tab Content */}
+      <div>
+        {activeTab === 'SUMMARY' && (
+          <div className="mt-6 border-t border-border pt-6">
+            <h2 className="text-2xl font-bold text-accent mb-6 text-center">Key Players</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {team.members.map((member) => (
+                <Link to={getPlayerPageLink(member.name, team.sport)} key={member.id} className="block">
+                  <div className="bg-tertiary rounded-lg p-3 flex items-center space-x-3 hover-bg-secondary transition-colors duration-200">
+                    <img
+                      src={`https://picsum.photos/50/50?random=${member.id.charCodeAt(0)}`}
+                      alt={`${member.name}`}
+                      className="w-12 h-12 object-cover rounded-full border-2 border-accent"
+                    />
+                    <div>
+                      <h3 className="text-lg font-semibold text-primary">{member.name}</h3>
+                      <p className="text-secondary text-sm">
+                        {member.position} {member.jerseyNumber ? `(#${member.jerseyNumber})` : ''}
+                      </p>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'NEWS' && (
+          <div className="mt-6 border-t border-border pt-6">
+            <h2 className="text-2xl font-bold text-accent mb-6 text-center">The latest news</h2>
+            {newsStatus === 'loading' && <LoadingSpinner />}
+            {newsStatus === 'error' && <ErrorDisplay message="Failed to load news." onRetry={fetchTeamNews} />}
+            {newsStatus === 'success' && news.length === 0 && (
+              <p className="text-center text-secondary">No news articles found for {team.name}.</p>
+            )}
+            {newsStatus === 'success' && news.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {news.map((article, index) => (
+                  <div key={index} className="bg-tertiary rounded-lg p-4 shadow-md flex flex-col">
+                    {article.imageUrl && (
+                      <img src={article.imageUrl} alt={article.title} className="w-full h-32 object-cover rounded-md mb-3" />
+                    )}
+                    <h3 className="text-lg font-semibold text-primary mb-2 leading-tight">{article.title}</h3>
+                    <p className="text-secondary text-sm flex-grow mb-3">{article.summary}</p>
+                    <div className="flex justify-between items-center text-xs text-secondary mt-auto">
+                      <span>{article.source}</span>
+                      <span>{article.date}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-center mt-8">
+              <button className="bg-secondary text-accent font-bold py-2 px-6 rounded-full hover-bg-secondary transition-colors duration-200">
+                View more news
+              </button>
+            </div>
+          </div>
+        )}
+
+        {(activeTab === 'RESULTS' || activeTab === 'FIXTURES') && (
+          <div className="mt-6 border-t border-border pt-6">
+            <h2 className="text-2xl font-bold text-accent mb-6 text-center">
+              {activeTab === 'RESULTS' ? 'Latest Results' : 'Upcoming Fixtures'}
+            </h2>
+            {gamesStatus === 'loading' && <LoadingSpinner />}
+            {gamesStatus === 'error' && <ErrorDisplay message="Failed to load games." onRetry={fetchTeamGames} />}
+            {gamesStatus === 'success' && ((activeTab === 'RESULTS' && results.length === 0) || (activeTab === 'FIXTURES' && fixtures.length === 0)) ? (
+              <p className="text-center text-secondary">No {activeTab.toLowerCase()} found for {team.name}.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {(activeTab === 'RESULTS' ? results : fixtures).map(score => (
+                  <ScoreCard key={score.gameId} score={score} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'DRAW' && (
+          <div className="mt-6 border-t border-border pt-6 text-center text-secondary">
+            <p>Draw information would be displayed here.</p>
+          </div>
+        )}
       </div>
     </div>
   );
 };
+    

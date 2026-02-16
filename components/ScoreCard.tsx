@@ -8,11 +8,11 @@ import {
   addFavoriteTeam,
   removeFavoriteTeam,
   isFavoriteTeam,
-  addFollowedGame, // Import new functions
-  removeFollowedGame, // Import new functions
-  isFollowedGame, // Import new functions
+  addFollowedGame,
+  removeFollowedGame,
+  isFollowedGame,
 } from '../utils/favorites';
-import { geminiService } from '../services/geminiService'; // Import geminiService for polling
+import { geminiService } from '../services/geminiService';
 
 interface ScoreCardProps {
   score?: Score; // Make score optional for loading state
@@ -34,12 +34,12 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, loading }) => {
   const { currentUser } = useUser();
   const [isHomeTeamFavorited, setIsHomeTeamFavorited] = useState(false);
   const [isAwayTeamFavorited, setIsAwayTeamFavorited] = useState(false);
-  const [isGameFollowed, setIsGameFollowed] = useState(false); // New state for game follow status
-  const [currentScore, setCurrentScore] = useState<Score | undefined>(score); // Mutable score state for updates
-  const [isUpdating, setIsUpdating] = useState(false); // State for visual update cue
+  const [isGameFollowed, setIsGameFollowed] = useState(false);
+  const [currentScore, setCurrentScore] = useState<Score | undefined>(score);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
-    setCurrentScore(score); // Initialize currentScore with the prop
+    setCurrentScore(score);
   }, [score]);
 
   useEffect(() => {
@@ -49,7 +49,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, loading }) => {
     if (currentScore?.awayTeam) {
       setIsAwayTeamFavorited(isFavoriteTeam(currentUser.id, currentScore.awayTeam));
     }
-    if (currentScore?.gameId) { // Check gameId for game follow status
+    if (currentScore?.gameId) {
       setIsGameFollowed(isFollowedGame(currentUser.id, currentScore.gameId));
     }
   }, [currentScore, currentUser.id]);
@@ -63,17 +63,15 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, loading }) => {
 
     const updateInterval = setInterval(async () => {
       try {
-        // Request an update for this specific game ID
         const updatedScores = await geminiService.getLiveScores(
-          undefined, // sport
-          undefined, // teamName
-          undefined, // playerName
-          currentScore.gameId // gameId to specifically request for
+          undefined,
+          undefined,
+          undefined,
+          currentScore.gameId
         );
         const updatedGame = updatedScores.find(s => s.gameId === currentScore.gameId);
 
         if (updatedGame) {
-          // Only update if scores or game state have actually changed
           if (
             updatedGame.homeScore !== currentScore.homeScore ||
             updatedGame.awayScore !== currentScore.awayScore ||
@@ -81,20 +79,20 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, loading }) => {
             updatedGame.gameTime !== currentScore.gameTime
           ) {
             setCurrentScore(updatedGame);
-            setIsUpdating(true); // Trigger visual cue
-            setTimeout(() => setIsUpdating(false), 500); // Reset after a short delay
+            setIsUpdating(true);
+            setTimeout(() => setIsUpdating(false), 500);
           }
         }
       } catch (error) {
         console.error(`Error fetching real-time update for game ${currentScore.gameId}:`, error);
       }
-    }, 15000); // Poll every 15 seconds
+    }, 15000);
 
-    return () => clearInterval(updateInterval); // Clean up interval on unmount or score/loading changes
-  }, [currentScore, loading]); // Depend on currentScore to restart interval if game changes
+    return () => clearInterval(updateInterval);
+  }, [currentScore, loading]);
 
   const handleToggleHomeTeamFavorite = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent navigation when clicking the star
+    e.stopPropagation();
     if (!currentScore?.homeTeam) return;
 
     if (isHomeTeamFavorited) {
@@ -106,7 +104,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, loading }) => {
   };
 
   const handleToggleAwayTeamFavorite = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent navigation when clicking the star
+    e.stopPropagation();
     if (!currentScore?.awayTeam) return;
 
     if (isAwayTeamFavorited) {
@@ -118,7 +116,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, loading }) => {
   };
 
   const handleToggleGameFollow = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent navigation
+    e.stopPropagation();
     if (!currentScore?.gameId) return;
 
     if (isGameFollowed) {
@@ -129,131 +127,116 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, loading }) => {
     setIsGameFollowed(prev => !prev);
   };
 
-  if (loading || !currentScore) { // Use currentScore in loading check
+  if (loading || !currentScore) {
     return (
-      <div className="bg-gray-800 rounded-lg shadow-lg p-4 mb-4 animate-pulse">
-        {/* Header Skeleton */}
-        <div className="flex justify-between items-start text-xs text-gray-400 mb-2">
-          <div className="h-4 bg-gray-700 rounded w-1/4"></div>
-          <div className="h-4 bg-gray-700 rounded w-1/6"></div>
+      <div className="bg-secondary rounded-lg shadow-md p-3 mb-3 animate-pulse">
+        <div className="flex justify-between items-center text-xs text-secondary mb-2">
+          <div className="h-3 bg-tertiary rounded w-1/4"></div>
+          <div className="h-3 bg-tertiary rounded w-1/6"></div>
         </div>
-
-        {/* Home Team Skeleton */}
-        <div className="flex items-center justify-between text-lg md:text-xl font-bold mb-3">
+        <div className="flex items-center justify-between text-base font-bold mb-2">
           <div className="flex items-center flex-grow min-w-0 pr-2">
-            <div className="w-8 h-8 rounded-full bg-gray-700 mr-3 flex-shrink-0"></div>
-            <div className="h-6 bg-gray-700 rounded w-3/5"></div>
+            <div className="w-6 h-6 rounded-full bg-tertiary mr-2 flex-shrink-0"></div>
+            <div className="h-4 bg-tertiary rounded w-3/5"></div>
           </div>
-          <div className="h-8 bg-gray-700 rounded w-1/12 mx-2"></div>
+          <div className="h-6 bg-tertiary rounded w-1/12 mx-1"></div>
         </div>
-
-        {/* Away Team Skeleton */}
-        <div className="flex items-center justify-between text-lg md:text-xl font-bold mb-3">
+        <div className="flex items-center justify-between text-base font-bold mb-2">
           <div className="flex items-center flex-grow min-w-0 pr-2">
-            <div className="w-8 h-8 rounded-full bg-gray-700 mr-3 flex-shrink-0"></div>
-            <div className="h-6 bg-gray-700 rounded w-3/5"></div>
+            <div className="w-6 h-6 rounded-full bg-tertiary mr-2 flex-shrink-0"></div>
+            <div className="h-4 bg-tertiary rounded w-3/5"></div>
           </div>
-          <div className="h-8 bg-gray-700 rounded w-1/12 mx-2"></div>
+          <div className="h-6 bg-tertiary rounded w-1/12 mx-1"></div>
         </div>
-
-        {/* Footer Skeleton */}
-        <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-700 text-sm font-medium">
-          <div className="h-6 bg-gray-700 rounded-full w-1/5"></div>
-          <div className="h-6 bg-gray-700 rounded w-1/4"></div>
+        <div className="flex justify-between items-center mt-3 pt-2 border-t border-border text-xs font-medium">
+          <div className="h-4 bg-tertiary rounded-full w-1/5"></div>
+          <div className="h-4 bg-tertiary rounded w-1/4"></div>
         </div>
       </div>
     );
   }
-
-  // If not loading and score is undefined, return null or a placeholder if desired
-  // This block is implicitly covered by the initial !currentScore check if loading is false.
-  // if (!currentScore) {
-  //   return null; // Or <ErrorDisplay message="Score data not available" />
-  // }
 
   const isLive = currentScore.gameState === 'Live';
   const isFinished = currentScore.gameState === 'Fulltime';
   const isUpcoming = currentScore.gameState === 'Upcoming';
 
   return (
-    <div className={`bg-gray-800 rounded-lg shadow-lg p-4 mb-4 transform hover:scale-102 transition-all duration-300 ease-in-out cursor-pointer relative overflow-hidden
+    <div className={`bg-secondary rounded-lg shadow-md p-3 mb-3 hover-bg-secondary transition-all duration-300 ease-in-out cursor-pointer relative overflow-hidden
       ${isUpdating ? 'animate-score-update' : ''}`}>
-      <div className="flex justify-between items-start text-xs text-gray-400 mb-2">
-        <span className="font-semibold text-emerald-400 uppercase">{currentScore.sport}</span>
+      <div className="flex justify-between items-start text-xs text-secondary mb-2">
+        <span className="font-semibold text-accent uppercase">{currentScore.sport}</span>
         <span className="font-medium">{currentScore.league}</span>
       </div>
 
-      <div className="flex items-center justify-between text-lg md:text-xl font-bold mb-3">
-        {/* Home Team */}
-        <Link to={getTeamPageLink(currentScore.homeTeam, currentScore.sport)} className="flex items-center flex-grow min-w-0 pr-2 group">
+      <div className="flex items-center justify-between text-base font-bold mb-1">
+        <Link to={getTeamPageLink(currentScore.homeTeam, currentScore.sport)} className="flex items-center flex-grow min-w-0 pr-2 group text-primary">
           <img
-            src={`https://picsum.photos/seed/${encodeURIComponent(currentScore.homeTeam)}/30/30`}
+            src={`https://picsum.photos/seed/${encodeURIComponent(currentScore.homeTeam)}/25/25`}
             alt={`${currentScore.homeTeam} logo`}
-            className="w-8 h-8 rounded-full mr-3 border border-gray-600 bg-gray-900 flex-shrink-0"
+            className="w-6 h-6 rounded-full mr-2 border border-border bg-tertiary flex-shrink-0"
           />
-          <span className="truncate text-gray-100 group-hover:underline" title={currentScore.homeTeam}>{currentScore.homeTeam}</span>
+          <span className="truncate group-hover:underline" title={currentScore.homeTeam}>{currentScore.homeTeam}</span>
         </Link>
         <button
           onClick={handleToggleHomeTeamFavorite}
           aria-label={isHomeTeamFavorited ? "Remove home team from favorites" : "Add home team to favorites"}
-          className="p-1 rounded-full hover:bg-gray-700 transition-colors flex-shrink-0"
+          className="p-1 rounded-full text-secondary hover:text-favorite transition-colors flex-shrink-0"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            className={`h-5 w-5 ${isHomeTeamFavorited ? 'text-yellow-400 fill-current' : 'text-gray-400'}`}
+            className={`h-4 w-4 ${isHomeTeamFavorited ? 'text-favorite fill-current' : ''}`}
             viewBox="0 0 20 20"
             fill="currentColor"
           >
             <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.817 2.033a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.817-2.033a1 1 0 00-1.175 0l-2.817 2.033c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
           </svg>
         </button>
-        <span className="ml-2 text-3xl font-extrabold text-emerald-200">{currentScore.homeScore}</span>
+        <span className="ml-2 text-xl font-extrabold text-primary">{currentScore.homeScore}</span>
       </div>
 
-      <div className="flex items-center justify-between text-lg md:text-xl font-bold mb-3">
-        {/* Away Team */}
-        <Link to={getTeamPageLink(currentScore.awayTeam, currentScore.sport)} className="flex items-center flex-grow min-w-0 pr-2 group">
+      <div className="flex items-center justify-between text-base font-bold mb-1">
+        <Link to={getTeamPageLink(currentScore.awayTeam, currentScore.sport)} className="flex items-center flex-grow min-w-0 pr-2 group text-primary">
           <img
-            src={`https://picsum.photos/seed/${encodeURIComponent(currentScore.awayTeam)}/30/30`}
+            src={`https://picsum.photos/seed/${encodeURIComponent(currentScore.awayTeam)}/25/25`}
             alt={`${currentScore.awayTeam} logo`}
-            className="w-8 h-8 rounded-full mr-3 border border-gray-600 bg-gray-900 flex-shrink-0"
+            className="w-6 h-6 rounded-full mr-2 border border-border bg-tertiary flex-shrink-0"
           />
-          <span className="truncate text-gray-100 group-hover:underline" title={currentScore.awayTeam}>{currentScore.awayTeam}</span>
+          <span className="truncate group-hover:underline" title={currentScore.awayTeam}>{currentScore.awayTeam}</span>
         </Link>
         <button
           onClick={handleToggleAwayTeamFavorite}
           aria-label={isAwayTeamFavorited ? "Remove away team from favorites" : "Add away team to favorites"}
-          className="p-1 rounded-full hover:bg-gray-700 transition-colors flex-shrink-0"
+          className="p-1 rounded-full text-secondary hover:text-favorite transition-colors flex-shrink-0"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            className={`h-5 w-5 ${isAwayTeamFavorited ? 'text-yellow-400 fill-current' : 'text-gray-400'}`}
+            className={`h-4 w-4 ${isAwayTeamFavorited ? 'text-favorite fill-current' : ''}`}
             viewBox="0 0 20 20"
             fill="currentColor"
           >
             <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.817 2.033a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.817-2.033a1 1 0 00-1.175 0l-2.817 2.033c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
           </svg>
         </button>
-        <span className="ml-2 text-3xl font-extrabold text-emerald-200">{currentScore.awayScore}</span>
+        <span className="ml-2 text-xl font-extrabold text-primary">{currentScore.awayScore}</span>
       </div>
 
-      <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-700 text-sm font-medium">
-        <span className={`px-3 py-1 rounded-full text-white font-semibold ${
-          isLive ? 'bg-red-600' : isFinished ? 'bg-green-600' : isUpcoming ? 'bg-blue-600' : 'bg-gray-600'
+      <div className="flex justify-between items-center mt-3 pt-2 border-t border-border text-xs font-medium">
+        <span className={`px-2 py-1 rounded-full text-primary font-semibold ${
+          isLive ? 'bg-live' : isFinished ? 'bg-emerald-600' : isUpcoming ? 'bg-blue-600' : 'bg-secondary'
         }`}>
           {currentScore.gameState}
         </span>
         <div className="flex items-center space-x-2">
-          <span className="text-gray-300">{currentScore.gameTime}</span>
+          <span className="text-secondary">{currentScore.gameTime}</span>
           {currentScore.gameId && (
             <button
               onClick={handleToggleGameFollow}
               aria-label={isGameFollowed ? "Remove game from scoreboard" : "Add game to scoreboard"}
-              className="p-1 rounded-full hover:bg-gray-700 transition-colors flex-shrink-0"
+              className="p-1 rounded-full text-secondary hover:text-followed transition-colors flex-shrink-0"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                className={`h-5 w-5 ${isGameFollowed ? 'text-blue-400 fill-current' : 'text-gray-400'}`}
+                className={`h-4 w-4 ${isGameFollowed ? 'text-followed fill-current' : ''}`}
                 viewBox="0 0 24 24"
                 fill="currentColor"
               >
@@ -265,9 +248,9 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, loading }) => {
       </div>
       <style>{`
         @keyframes scoreUpdateFlash {
-          0% { background-color: #374151; } /* gray-700 */
-          50% { background-color: #059669; } /* emerald-600 */
-          100% { background-color: #374151; } /* gray-700 */
+          0% { background-color: var(--color-bg-secondary); }
+          50% { background-color: var(--color-text-accent); }
+          100% { background-color: var(--color-bg-secondary); }
         }
         .animate-score-update {
           animation: scoreUpdateFlash 0.5s ease-in-out;
@@ -276,3 +259,4 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, loading }) => {
     </div>
   );
 };
+    

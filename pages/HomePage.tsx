@@ -5,14 +5,13 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorDisplay } from '../components/ErrorDisplay';
 import { geminiService } from '../services/geminiService';
 import { Score, Sport, QueryStatus } from '../types';
-import { EXAMPLE_SPORTS } from '../constants';
-import { useSearchParams } from 'react-router-dom'; // Import useSearchParams
+import { useSearchParams } from 'react-router-dom';
 
 export const HomePage: React.FC = () => {
   const [scores, setScores] = useState<Score[]>([]);
   const [status, setStatus] = useState<QueryStatus>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [searchParams, setSearchParams] = useSearchParams(); // Initialize useSearchParams
+  const [searchParams] = useSearchParams();
 
   // Get the sport from the URL, default to 'All' if not present
   const urlSport = searchParams.get('sport');
@@ -33,19 +32,8 @@ export const HomePage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // Fetch scores based on the sport from the URL
     fetchScores(selectedSport === 'All' ? undefined : selectedSport);
-  }, [selectedSport, fetchScores]); // Re-fetch when selectedSport (derived from URL) changes
-
-  const handleSportChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newSport = e.target.value as Sport | 'All';
-    if (newSport === 'All') {
-      setSearchParams({}); // Remove sport parameter from URL
-    } else {
-      setSearchParams({ sport: newSport }); // Set sport parameter in URL
-    }
-    // The useEffect above will handle re-fetching based on the URL change
-  };
+  }, [selectedSport, fetchScores]);
 
   const handleRetry = () => {
     fetchScores(selectedSport === 'All' ? undefined : selectedSport);
@@ -65,27 +53,13 @@ export const HomePage: React.FC = () => {
 
 
   return (
-    <div className="p-4">
-      <h1 className="text-4xl font-extrabold text-center text-emerald-400 mb-8">Live Scores & Upcoming Games</h1>
-
-      <div className="flex justify-center mb-8">
-        <select
-          value={selectedSport} // Control dropdown with state derived from URL
-          onChange={handleSportChange}
-          className="bg-gray-700 text-gray-100 border border-gray-600 rounded-lg p-3 text-lg focus:ring-emerald-500 focus:border-emerald-500 transition-colors duration-200"
-        >
-          <option value="All">All Sports</option>
-          {EXAMPLE_SPORTS.map((sport) => (
-            <option key={sport} value={sport}>
-              {sport}
-            </option>
-          ))}
-        </select>
-      </div>
+    <div className="p-2">
+      <h1 className="text-2xl font-extrabold text-center text-accent mb-6">
+        {selectedSport === 'All' ? 'Live Scores & Upcoming Games' : `${selectedSport} Scores`}
+      </h1>
 
       {status === 'loading' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Render multiple skeleton cards for a better loading experience */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {[...Array(6)].map((_, index) => (
             <ScoreCard key={index} loading={true} />
           ))}
@@ -93,25 +67,26 @@ export const HomePage: React.FC = () => {
       )}
       {status === 'error' && <ErrorDisplay message={error || "Unknown error"} onRetry={handleRetry} />}
       {status === 'success' && scores.length === 0 && (
-        <p className="text-center text-gray-400 text-xl">No scores available for selected sport.</p>
+        <p className="text-center text-secondary text-xl">No scores available for selected sport.</p>
       )}
 
       {status === 'success' && scores.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {sortedDates.map(date => (
-            <div key={date} className="md:col-span-full">
-              <h2 className="text-2xl font-bold text-emerald-300 mb-4 border-b border-gray-700 pb-2">
-                {date === new Date().toISOString().slice(0, 10) ? 'Today' : date}
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {groupedScores[date].map((score) => (
-                  <ScoreCard key={score.gameId} score={score} />
-                ))}
+            <React.Fragment key={date}>
+              <div className="col-span-full">
+                <h2 className="text-lg font-bold text-accent mb-2 border-b border-border pb-1">
+                  {date === new Date().toISOString().slice(0, 10) ? 'Today' : date}
+                </h2>
               </div>
-            </div>
+              {groupedScores[date].map((score) => (
+                <ScoreCard key={score.gameId} score={score} />
+              ))}
+            </React.Fragment>
           ))}
         </div>
       )}
     </div>
   );
 };
+    
