@@ -99,6 +99,41 @@ export interface NewsArticle {
   imageUrl?: string;
 }
 
+// --- Social Features Interfaces ---
+export interface UserProfile {
+  userId: string;
+  name: string;
+  bio?: string;
+  avatarUrl?: string;
+  favoriteTeams: string[]; // IDs of favorite teams
+  favoritePlayers: string[]; // IDs of favorite players
+  followedGames: string[]; // IDs of followed games
+  following: string[]; // User IDs this user follows
+  followers: string[]; // User IDs following this user (can be derived or stored)
+}
+
+export interface PrivateChatMessage {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  text: string;
+  timestamp: Date;
+}
+
+export interface WatchPartyMessage {
+  id: string;
+  gameId: string;
+  senderId: string;
+  text: string;
+  timestamp: Date;
+}
+
+export interface ChatSession {
+  otherUserId: string;
+  lastMessage?: PrivateChatMessage;
+  unreadCount: number;
+}
+
 // --- API Response Types (for Gemini) ---
 
 export interface GeminiResponse<T> {
@@ -151,7 +186,8 @@ export enum Sport {
   BASEBALL = 'Baseball', // Added Baseball for header nav
   GOLF = 'Golf', // Added Golf for header nav
   SNOOKER = 'Snooker', // Added Snooker for header nav
-  VOLLEYBALL = 'Volleyball' // Removed trailing comma here
+  VOLLEYBALL = 'Volleyball'
 }
 
 export type QueryStatus = 'idle' | 'loading' | 'success' | 'error';
+    

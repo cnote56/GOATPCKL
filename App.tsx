@@ -11,13 +11,22 @@ import { SearchPage } from './pages/SearchPage';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { ChatBot } from './components/ChatBot';
-import { Sidebar } from './components/Sidebar'; // Import Sidebar
+import { Sidebar } from './components/Sidebar';
 import { UserProvider } from './context/UserContext';
+
+// New social pages
+import { UserProfilePage } from './pages/UserProfilePage';
+import { UserWatchlistPage } from './pages/UserWatchlistPage';
+import { UserScoreboardPage } from './pages/UserScoreboardPage';
+import { AllUsersPage } from './pages/AllUsersPage';
+import { ChatsPage } from './pages/ChatsPage';
+import { IndividualChatPage } from './pages/IndividualChatPage';
+import { WatchPartyPage } from './pages/WatchPartyPage';
 
 function App() {
   const [isChatBotOpen, setIsChatBotOpen] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // New state for sidebar
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark'); // New state for theme
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
   // Set initial theme from localStorage or default to dark
   useEffect(() => {
@@ -58,12 +67,12 @@ function App() {
         <div className={`min-h-screen flex flex-col bg-primary text-primary`}>
           <Header
             toggleChatBot={toggleChatBot}
-            toggleSidebar={toggleSidebar} // Pass toggleSidebar
-            toggleTheme={toggleTheme} // Pass toggleTheme
-            currentTheme={theme} // Pass currentTheme
+            toggleSidebar={toggleSidebar}
+            toggleTheme={toggleTheme}
+            currentTheme={theme}
           />
           <div className="flex flex-grow">
-            <Sidebar isOpen={isSidebarOpen} onClose={toggleSidebar} /> {/* Render Sidebar */}
+            <Sidebar isOpen={isSidebarOpen} onClose={toggleSidebar} />
             <main className="flex-grow container mx-auto p-4 sm:p-6 lg:p-4 transition-all duration-300 ease-in-out">
               <Routes>
                 <Route path="/" element={<HomePage />} />
@@ -73,6 +82,16 @@ function App() {
                 <Route path="/watchlist" element={<MyWatchlistPage />} />
                 <Route path="/scoreboard" element={<MyScoreboardPage />} />
                 <Route path="/search" element={<SearchPage />} />
+
+                {/* New Social Routes */}
+                <Route path="/users" element={<AllUsersPage />} />
+                <Route path="/users/:userId" element={<UserProfilePage />} />
+                <Route path="/users/:userId/watchlist" element={<UserWatchlistPage />} />
+                <Route path="/users/:userId/scoreboard" element={<UserScoreboardPage />} />
+                <Route path="/chats" element={<ChatsPage />} />
+                <Route path="/chats/:otherUserId" element={<IndividualChatPage />} />
+                <Route path="/game/:gameId/watchparty" element={<WatchPartyPage />} />
+
               </Routes>
             </main>
           </div>

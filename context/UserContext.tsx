@@ -5,6 +5,7 @@ import React, { createContext, useState, useContext, useEffect, ReactNode, useCa
 interface User {
   id: string;
   name: string;
+  profileId?: string; // Optional: Link to a more detailed user profile
 }
 
 // Define the shape of the context value
@@ -12,6 +13,7 @@ interface UserContextType {
   currentUser: User;
   switchUser: (userId: string) => void;
   availableUsers: User[];
+  getOtherUsers: (currentUserId: string) => User[];
 }
 
 // Create the context with a default (undefined) value
@@ -19,9 +21,11 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 
 // Predefined users for testing
 const predefinedUsers: User[] = [
-  { id: 'user1', name: 'User 1' },
-  { id: 'user2', name: 'User 2' },
-  { id: 'user3', name: 'User 3' } // Removed trailing comma here
+  { id: 'user1', name: 'LeBronFan23', profileId: 'profile1' },
+  { id: 'user2', name: 'MessiMagic10', profileId: 'profile2' },
+  { id: 'user3', name: 'CurryMVP', profileId: 'profile3' },
+  { id: 'user4', name: 'Ronaldo_CR7', profileId: 'profile4' },
+  { id: 'user5', name: 'SerenaChamp', profileId: 'profile5' },
 ];
 
 interface UserProviderProps {
@@ -50,10 +54,15 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     }
   }, []);
 
+  const getOtherUsers = useCallback((currentUserId: string): User[] => {
+    return predefinedUsers.filter(user => user.id !== currentUserId);
+  }, []);
+
   const contextValue = {
     currentUser,
     switchUser,
     availableUsers: predefinedUsers,
+    getOtherUsers,
   };
 
   return (
@@ -71,3 +80,4 @@ export const useUser = (): UserContextType => {
   }
   return context;
 };
+    

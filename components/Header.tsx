@@ -23,7 +23,7 @@ const TEMPLATE_SPORTS = [
   { name: 'Footy', icon: '🏈' },
   { name: 'Golf', icon: '⛳' },
   { name: 'Snooker', icon: '🎱' },
-  { name: 'Volleyball', icon: '🏐' } // Removed trailing comma
+  { name: 'Volleyball', icon: '🏐' }
 ];
 
 export const Header: React.FC<HeaderProps> = ({ toggleChatBot, toggleSidebar, toggleTheme, currentTheme }) => {
@@ -70,6 +70,20 @@ export const Header: React.FC<HeaderProps> = ({ toggleChatBot, toggleSidebar, to
           <Link to="/search" className="sm:hidden p-2 rounded-full hover-bg-secondary text-secondary" aria-label="Search">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </Link>
+
+          {/* Users Link */}
+          <Link to="/users" className="p-2 rounded-full hover-bg-secondary text-secondary" aria-label="Users">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.354c.24-.263.63-.448 1.1-.448 1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2zM12 6a4 4 0 100 8c2.209 0 4-1.791 4-4s-1.791-4-4-4zM16 17v-.001a1.5 1.5 0 00-1.5-1.5h-1a.5.5 0 00-.5.5v2.5a.5.5 0 00.5.5h1a1.5 1.5 0 001.5-1.5zM8 17v-.001a1.5 1.5 0 01-1.5-1.5H6a.5.5 0 01-.5.5v2.5a.5.5 0 01.5.5h1a1.5 1.5 0 001.5-1.5zM12 14a6.5 6.5 0 00-6.5 6.5v1.5a.5.5 0 00.5.5h12a.5.5 0 00.5-.5v-1.5A6.5 6.5 0 0012 14z"/>
+            </svg>
+          </Link>
+
+          {/* Chats Link */}
+          <Link to="/chats" className="p-2 rounded-full hover-bg-secondary text-secondary" aria-label="Chats">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
           </Link>
 

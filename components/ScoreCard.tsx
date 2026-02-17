@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Score } from '../types';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { EXAMPLE_FOOTBALL_TEAMS, EXAMPLE_BASKETBALL_TEAMS } from '../constants';
 import { useUser } from '../context/UserContext';
 import {
@@ -32,6 +32,7 @@ const getTeamPageLink = (teamName: string, sport: string) => {
 
 export const ScoreCard: React.FC<ScoreCardProps> = ({ score, loading }) => {
   const { currentUser } = useUser();
+  const navigate = useNavigate();
   const [isHomeTeamFavorited, setIsHomeTeamFavorited] = useState(false);
   const [isAwayTeamFavorited, setIsAwayTeamFavorited] = useState(false);
   const [isGameFollowed, setIsGameFollowed] = useState(false);
@@ -125,6 +126,13 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, loading }) => {
       addFollowedGame(currentUser.id, currentScore.gameId);
     }
     setIsGameFollowed(prev => !prev);
+  };
+
+  const handleStartWatchParty = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (currentScore?.gameId) {
+      navigate(`/game/${currentScore.gameId}/watchparty`);
+    }
   };
 
   if (loading || !currentScore) {
@@ -241,6 +249,17 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, loading }) => {
                 fill="currentColor"
               >
                 <path d="M5 21a2 2 0 002 2h10a2 2 0 002-2V7l-5-5H7a2 2 0 00-2 2v17zm7-14h5l-5-5v5z" />
+              </svg>
+            </button>
+          )}
+          {currentScore.gameId && isLive && ( // Only show watch party for live games
+            <button
+              onClick={handleStartWatchParty}
+              aria-label="Start Watch Party"
+              className="p-1 rounded-full bg-blue-500 text-white hover:bg-blue-600 transition-colors flex-shrink-0 ml-2"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
             </button>
           )}

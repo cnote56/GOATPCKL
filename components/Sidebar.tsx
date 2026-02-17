@@ -18,12 +18,12 @@ const PINNED_LEAGUES = [
   { name: 'NBA', link: '/league/NBA' },
   { name: 'Premier League', link: '/league/Premier%20League' },
   { name: 'La Liga', link: '/league/La%20Liga' },
-  { name: 'Serie A', link: '/league/Serie%20A' } // Removed trailing comma
+  { name: 'Serie A', link: '/league/Serie%20A' }
 ];
 
 const COUNTRIES = [
   'USA', 'England', 'Spain', 'Germany', 'Italy', 'France', 'Brazil', 'Argentina',
-  'Mexico', 'Canada', 'Australia', 'Japan', 'South Korea', 'China', 'India' // Removed trailing comma
+  'Mexico', 'Canada', 'Australia', 'Japan', 'South Korea', 'China', 'India'
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
@@ -83,6 +83,50 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             </svg>
           </button>
         </div>
+
+        {/* General Navigation */}
+        <section className="p-4 border-b border-border">
+          <h3 className="text-sm font-semibold text-secondary uppercase mb-3">NAVIGATION</h3>
+          <ul className="space-y-2">
+            <li>
+              <Link
+                to={`/users/${currentUser.id}`}
+                className="flex items-center text-primary hover:text-accent hover-bg-secondary p-2 rounded-lg transition-colors group"
+                onClick={onClose}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                <span className="text-sm font-medium group-hover:underline">My Profile</span>
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/users"
+                className="flex items-center text-primary hover:text-accent hover-bg-secondary p-2 rounded-lg transition-colors group"
+                onClick={onClose}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h.01M18.5 21a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM9 20h.01M10.5 21a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM5.636 10.636a9 9 0 0112.728 0m-2.828 2.828a5 5 0 01-7.072 0M2 12A10 10 0 0112 2v2A8 8 0 004 12v2a.5.5 0 01-.5.5h-1a.5.5 0 01-.5-.5V12z" />
+                </svg>
+                <span className="text-sm font-medium group-hover:underline">Other Users</span>
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/chats"
+                className="flex items-center text-primary hover:text-accent hover-bg-secondary p-2 rounded-lg transition-colors group"
+                onClick={onClose}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                </svg>
+                <span className="text-sm font-medium group-hover:underline">My Chats</span>
+              </Link>
+            </li>
+          </ul>
+        </section>
+
 
         {/* MY TEAMS */}
         <section className="p-4 border-b border-border">
