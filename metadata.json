@@ -1,5 +1,8 @@
 {
-  "name": "URScoreCard Frontend",
-  "description": "A dynamic React frontend for URScoreCard.com, displaying real-time sports scores, player statistics, team profiles, and league information, powered by Gemini API for mock data generation.",
-  "requestFramePermissions": []
+  "name": "GOATPCKL",
+  "description": "The ultimate platform for nightly NBA player tracking, trivia challenges, fan interactions, and real-time athletic analysis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
