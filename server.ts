@@ -4,9 +4,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { MongoClient, Db } from 'mongodb';
 import { GoogleGenAI, Type } from '@google/genai';
+import { seededTrivia } from './src/triviaData';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const isESM = typeof import.meta !== 'undefined' && typeof import.meta.url !== 'undefined';
+const __filename = isESM ? fileURLToPath(import.meta.url) : '';
+const __dirname = isESM ? path.dirname(__filename) : '';
 
 // Initialize Gemini Client
 const ai = new GoogleGenAI({
@@ -62,22 +64,7 @@ const defaultGames = [
   { id: '103', homeTeam: 'Bucks', awayTeam: 'Thunder', time: 'Final', status: 'completed', score: '118-112', date: 'Yesterday' }
 ];
 
-const defaultTrivia = [
-  {
-    id: 't1',
-    question: 'Who is the only player in NBA history to record 30,000 points, 10,000 rebounds, and 10,000 assists?',
-    options: ['Michael Jordan', 'LeBron James', 'Kobe Bryant', 'Kareem Abdul-Jabbar'],
-    answer: 'LeBron James',
-    explanation: 'LeBron James achieved this historic milestone in 2022, solidifying his unique all-around legacy.'
-  },
-  {
-    id: 't2',
-    question: 'Who holds the record for the most points in a single NBA game with 100 points?',
-    options: ['Kobe Bryant', 'Michael Jordan', 'Wilt Chamberlain', 'Elgin Baylor'],
-    answer: 'Wilt Chamberlain',
-    explanation: 'Wilt Chamberlain scored 100 points for the Philadelphia Warriors on March 2, 1962.'
-  }
-];
+const defaultTrivia = [...seededTrivia];
 
 let inMemoryStorage = {
   players: [...defaultPlayers],
@@ -124,9 +111,12 @@ async function seedDatabase() {
     }
 
     const triviaCount = await triviaCol.countDocuments();
-    if (triviaCount === 0) {
+    if (triviaCount < 50) {
+      if (triviaCount > 0) {
+        await triviaCol.deleteMany({});
+      }
       await triviaCol.insertMany(defaultTrivia);
-      console.log('Seeded trivia collection in MongoDB.');
+      console.log('Seeded and upgraded trivia collection with 100 high-quality questions.');
     }
 
     const leaderboardCount = await leaderboardCol.countDocuments();
@@ -278,28 +268,57 @@ async function startServer() {
 
   // 6. Gemini Trivia Mining / Generation from active stats & historical profiles
   app.post('/api/trivia/mine', async (req: any, res: any) => {
+    const { simulateLivePlay } = req.body;
     const db = await getDb();
     let sampleStats: any[] = inMemoryStorage.players;
+    let sampleGames: any[] = inMemoryStorage.games;
     if (db) {
       sampleStats = await db.collection('players').find({}).toArray();
+      sampleGames = await db.collection('games').find({}).toArray();
     }
 
     try {
-      const prompt = `You are the ultimate NBA statistician and quizmaster for a sports picking/trivia app called GOATPCKL.
-      Analyze the following NBA player stats data and use your broad historical knowledge to mine exactly 3 highly engaging, fact-based trivia questions.
-      
-      Here is the available current player dataset:
-      ${JSON.stringify(sampleStats, null, 2)}
+      let prompt = '';
+      if (simulateLivePlay) {
+        prompt = `You are the ultimate live NBA commentator, analytical game-simulator, and quizmaster for a fantasy app called GOATPCKL.
+        
+        Analyze these live player roster cards:
+        ${JSON.stringify(sampleStats, null, 2)}
+        And tonight's active live matchups:
+        ${JSON.stringify(sampleGames, null, 2)}
 
-      For each question, ensure it is statistically accurate based either directly on these statistics (e.g. "Which player leads this list with 33.9 PPG?") or historical milestones associated with these teams/players (e.g. LeBron James Laker championships, Stephen Curry 3-pointers, Nuggets franchise statistics).
+        Create EXACTLY 3 highly engaging trivia questions that mimics real-time court events happening right now (or just finished) to keep the TV viewer glued to the screen!
+        For example:
+        - "Stephen Curry is heating up with 18 points in the 3rd quarter tonight. In NBA History, who holds the record for most 3-pointers made in a single quarter?"
+        - "Luka Doncic is leading a Mavs fastbreak right now. If he logs another triple-double tonight, how many career triple-doubles will he have?"
+        - "Lakers at Warriors is going wire-to-wire. What is the franchise record for most points scored in a single game between these two historic teams?"
 
-      Return the result as a strict JSON array where each object has the following keys:
-      - question: (highly engaging fact-based trivia question)
-      - options: (must be exactly 4 possible option strings)
-      - answer: (must be the exact correct string matching one of the options)
-      - explanation: (a highly details breakdown resembling an ESPN analyst)
+        Formulate fresh, creative, highly specific questions using the active list of players/matchups. Set the scene as if the play is unfolding live right now!
+        
+        Return the result as a strict JSON array where each object has the following keys:
+        - question: (live court-mimicked, high-stakes commentary-based trivia question)
+        - options: (must be exactly 4 possible option strings)
+        - answer: (must be the exact correct string matching one of the options)
+        - explanation: (a highly details breakdown resembling an ESPN analyst)
 
-      Only return the clean, stringified JSON array. Do not include markdown code block syntax or extra text.`;
+        Only return the clean, stringified JSON array. Do not include markdown code block syntax or extra text.`;
+      } else {
+        prompt = `You are the ultimate NBA statistician and quizmaster for a sports picking/trivia app called GOATPCKL.
+        Analyze the following NBA player stats data and use your broad historical knowledge to mine exactly 3 highly engaging, fact-based trivia questions.
+        
+        Here is the available current player dataset:
+        ${JSON.stringify(sampleStats, null, 2)}
+
+        For each question, ensure it is statistically accurate based either directly on these statistics (e.g. "Which player leads this list with 33.9 PPG?") or historical milestones associated with these teams/players (e.g. LeBron James Laker championships, Stephen Curry 3-pointers, Nuggets franchise statistics).
+
+        Return the result as a strict JSON array where each object has the following keys:
+        - question: (highly engaging fact-based trivia question)
+        - options: (must be exactly 4 possible option strings)
+        - answer: (must be the exact correct string matching one of the options)
+        - explanation: (a highly details breakdown resembling an ESPN analyst)
+
+        Only return the clean, stringified JSON array. Do not include markdown code block syntax or extra text.`;
+      }
 
       const response = await ai.models.generateContent({
         model: 'gemini-3.5-flash',
@@ -331,7 +350,8 @@ async function startServer() {
       // Add IDs to generated trivia
       const typedTrivia = triviaQuestions.map((t: any, index: number) => ({
         ...t,
-        id: `gen-${Date.now()}-${index}`
+        id: `gen-${Date.now()}-${index}`,
+        isLiveMimic: !!simulateLivePlay
       }));
 
       if (db) {
@@ -357,6 +377,76 @@ async function startServer() {
       res.json(trivia);
     } else {
       res.json(inMemoryStorage.trivia);
+    }
+  });
+
+  // 7b. Get user purchased items from XP Shop
+  app.get('/api/xp-shop/purchases', async (req: any, res: any) => {
+    const { username } = req.query;
+    if (!username) return res.status(400).json({ error: 'Missing username' });
+
+    const db = await getDb();
+    if (db) {
+      const purchases = await db.collection('xp_purchases').find({ username }).toArray();
+      res.json(purchases);
+    } else {
+      // Fallback local memory
+      if (!(inMemoryStorage as any).purchases) (inMemoryStorage as any).purchases = [];
+      const userPurchases = (inMemoryStorage as any).purchases.filter((p: any) => p.username === username);
+      res.json(userPurchases);
+    }
+  });
+
+  // 7c. Purchase item in the XP Shop (Costs XP score deducted from Leaderboard)
+  app.post('/api/xp-shop/purchase', async (req: any, res: any) => {
+    const { username, itemId, itemCost, itemName } = req.body;
+    if (!username || !itemId) return res.status(400).json({ error: 'Missing username or item details' });
+
+    const db = await getDb();
+    let currentScore = 0;
+
+    if (db) {
+      const userLd = await db.collection('leaderboard').findOne({ username });
+      if (userLd) currentScore = userLd.score || 0;
+    } else {
+      const userLd = inMemoryStorage.leaderboard.find(l => l.username === username);
+      if (userLd) currentScore = userLd.score || 0;
+    }
+
+    if (currentScore < itemCost) {
+      return res.status(400).json({ error: `Insufficient XP Balance! You need ${itemCost} XP, but only have ${currentScore} XP.` });
+    }
+
+    const doubleDeduct = -itemCost;
+    const newPurchase = {
+      id: `purch-${Date.now()}`,
+      username,
+      itemId,
+      itemName,
+      cost: itemCost,
+      purchasedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      appliedToPlayer: null
+    };
+
+    if (db) {
+      // Deduct score
+      await db.collection('leaderboard').updateOne(
+        { username },
+        { $inc: { score: doubleDeduct } }
+      );
+      // Save purchase
+      await db.collection('xp_purchases').insertOne(newPurchase);
+      const userPurchases = await db.collection('xp_purchases').find({ username }).toArray();
+      res.json({ success: true, purchases: userPurchases });
+    } else {
+      // Fallback
+      if (!(inMemoryStorage as any).purchases) (inMemoryStorage as any).purchases = [];
+      const userLd = inMemoryStorage.leaderboard.find(l => l.username === username);
+      if (userLd) userLd.score += doubleDeduct;
+
+      (inMemoryStorage as any).purchases.push(newPurchase);
+      const userPurchases = (inMemoryStorage as any).purchases.filter((p: any) => p.username === username);
+      res.json({ success: true, purchases: userPurchases });
     }
   });
 
@@ -441,9 +531,10 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.join(__dirname, 'dist')));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('/:all*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 

@@ -13,11 +13,16 @@ import {
   AlertCircle,
   FileText,
   Send,
-  Video
+  Video,
+  ShoppingBag,
+  ShieldCheck,
+  Zap,
+  Sparkles,
+  Coins
 } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'draft' | 'standings' | 'trivia' | 'chat' | 'csv'>('draft');
+  const [activeTab, setActiveTab] = useState<'trivia' | 'draft' | 'xp-shop' | 'standings' | 'chat' | 'csv'>('trivia');
   const [username, setUsername] = useState<string>('Cole');
   const [tempUsername, setTempUsername] = useState<string>('Cole');
   const [isEditingUser, setIsEditingUser] = useState<boolean>(false);
@@ -29,17 +34,22 @@ export default function App() {
   const [trivia, setTrivia] = useState<any[]>([]);
   const [chats, setChats] = useState<any[]>([]);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [purchases, setPurchases] = useState<any[]>([]);
   
   // Interaction State
   const [selectedTriviaOption, setSelectedTriviaOption] = useState<{ [key: string]: string }>({});
   const [triviaResult, setTriviaResult] = useState<{ [key: string]: { correct: boolean, explanation: string, correctAnswer: string } }>({});
   const [isMiningTrivia, setIsMiningTrivia] = useState<boolean>(false);
+  const [isMiningMimic, setIsMiningMimic] = useState<boolean>(false);
   const [chatInput, setChatInput] = useState<string>('');
   const [chatVideoUrl, setChatVideoUrl] = useState<string>('');
   const [userVote, setUserVote] = useState<string>('');
   const [csvUploadStatus, setCsvUploadStatus] = useState<string>('');
   const [csvFileContent, setCsvFileContent] = useState<string>('');
   const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [purchaseStatus, setPurchaseStatus] = useState<string>('');
+  const [insuranceApplied, setInsuranceApplied] = useState<boolean>(false);
+  const [offsetApplied, setOffsetApplied] = useState<boolean>(false);
 
   // Poll intervals
   useEffect(() => {
@@ -48,9 +58,10 @@ export default function App() {
       fetchPicks();
       fetchChats();
       fetchLeaderboard();
+      fetchPurchases(username);
     }, 4000);
     return () => clearInterval(interval);
-  }, []);
+  }, [username]);
 
   const fetchInitialData = async () => {
     try {
@@ -66,6 +77,7 @@ export default function App() {
       fetchTrivia();
       fetchChats();
       fetchLeaderboard();
+      fetchPurchases(username);
     } catch (err) {
       console.error('Failed to load initial GOATPCKL data:', err);
     }
@@ -93,6 +105,18 @@ export default function App() {
     const res = await fetch('/api/leaderboard');
     const data = await res.json();
     setLeaderboard(data);
+  };
+
+  const fetchPurchases = async (user: string) => {
+    try {
+      const res = await fetch(`/api/xp-shop/purchases?username=${encodeURIComponent(user)}`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setPurchases(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch user purchases:', err);
+    }
   };
 
   // Submit Nightly GOAT selection
@@ -140,15 +164,21 @@ export default function App() {
     }
   };
 
-  // Mine fresh fact-based trivia using Gemini
-  const handleMineTrivia = async () => {
-    setIsMiningTrivia(true);
+  // Mine fresh trivia using Gemini (Standard or Live Mimicked)
+  const handleMineTrivia = async (simulateLivePlay: boolean = false) => {
+    if (simulateLivePlay) setIsMiningMimic(true);
+    else setIsMiningTrivia(true);
+
     try {
-      const res = await fetch('/api/trivia/mine', { method: 'POST' });
+      const res = await fetch('/api/trivia/mine', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ simulateLivePlay })
+      });
       const data = await res.json();
       if (data.trivia) {
         setTrivia(data.trivia);
-        alert('Gemini successfully mined custom statistical trivia from your player list!');
+        // Clean feedback without modal blocking where appropriate
       } else if (data.error) {
         alert(data.error);
       }
@@ -156,6 +186,30 @@ export default function App() {
       console.error('Failed to trigger trivia generation:', err);
     } finally {
       setIsMiningTrivia(false);
+      setIsMiningMimic(false);
+    }
+  };
+
+  // Trigger XP item purchase
+  const handlePurchaseItem = async (itemId: string, itemCost: number, itemName: string) => {
+    setPurchaseStatus('');
+    try {
+      const res = await fetch('/api/xp-shop/purchase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, itemId, itemCost, itemName })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPurchases(data.purchases);
+        setPurchaseStatus(`✅ Purchased: ${itemName}! -${itemCost} XP applied.`);
+        fetchLeaderboard();
+      } else {
+        setPurchaseStatus(`❌ Error: ${data.error || 'Failed to complete transaction'}`);
+      }
+    } catch (err) {
+      console.error('Purchase failed:', err);
+      setPurchaseStatus('❌ System error during checkout.');
     }
   };
 
@@ -224,6 +278,8 @@ export default function App() {
   };
 
   const activeUserPick = picks.find(p => p.username === username);
+  const userLeaderboardRecord = leaderboard.find(l => l.username === username);
+  const userXP = userLeaderboardRecord ? userLeaderboardRecord.score : 0;
 
   return (
     <div className="min-h-screen bg-[#121214] text-[#f5f5f5] flex flex-col items-center p-0 md:p-6 select-none font-sans">
@@ -239,15 +295,20 @@ export default function App() {
               <h1 className="text-xl font-black tracking-tighter text-[#ccff00] italic">GOATPCKL</h1>
             </div>
             
-            {/* User Profile Info section */}
+            {/* User Profile & XP Balance section */}
             <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 bg-[#ccff00]/15 text-[#ccff00] px-2.5 py-1 rounded-full border border-[#ccff00]/30 text-[10px] font-black tracking-wider shadow-sm">
+                <Coins size={11} className="animate-spin-slow" />
+                <span>{userXP} XP</span>
+              </div>
+
               {isEditingUser ? (
                 <div className="flex items-center gap-1">
                   <input 
                     type="text" 
                     value={tempUsername} 
                     onChange={(e) => setTempUsername(e.target.value)}
-                    className="bg-[#2a2a30] text-xs px-2 py-1 rounded border border-[#ccff00] outline-none w-20 text-center"
+                    className="bg-[#2a2a30] text-xs px-2 py-1 rounded border border-[#ccff00] outline-none w-20 text-center text-white font-bold"
                     maxLength={12}
                   />
                   <button 
@@ -264,6 +325,9 @@ export default function App() {
                 >
                   <User size={11} className="text-[#ccff00]" />
                   <span className="text-[11px] font-bold tracking-tight">{username}</span>
+                  {purchases.some(p => p.itemId === 'crown_badge') && (
+                    <Sparkles size={10} className="text-yellow-400" />
+                  )}
                 </div>
               )}
             </div>
@@ -271,10 +335,10 @@ export default function App() {
 
           {/* Hot ticker showing quick info */}
           <div className="flex items-center gap-2 text-[10px] font-bold text-[#a3a3b3] bg-[#1d1d21] px-2 py-1.5 rounded-md mt-1 overflow-x-auto whitespace-nowrap scrollbar-none">
-            <span className="text-[#ccff00]">LIVE UPDATED:</span>
-            <span>🔥 {picks.length} Fans picked their GOAT</span>
+            <span className="text-[#ccff00]">LIVE TICKER:</span>
+            <span>🔥 {picks.length} picks loaded</span>
             <span className="opacity-30">|</span>
-            <span>🏀 {players.length} Players ready</span>
+            <span>🏆 Double XP Trivia Hour Active!</span>
           </div>
         </div>
 
@@ -284,6 +348,69 @@ export default function App() {
           {/* TAB 1: DRAFT ROOM */}
           {activeTab === 'draft' && (
             <div className="space-y-4">
+              
+              {/* Draft modifier controls if pick is locked */}
+              {activeUserPick && (
+                <div className="bg-[#24242e] border-2 border-[#ccff00]/40 rounded-2xl p-4 space-y-3 shadow-md">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] bg-[#ccff00] text-black font-extrabold px-1.5 py-0.5 rounded tracking-wider uppercase">
+                      My Locked Vote
+                    </span>
+                    <span className="text-xs font-black text-white">{activeUserPick.player}</span>
+                  </div>
+
+                  <p className="text-[10.5px] text-[#a3a3b3] leading-relaxed">
+                    Protect your active pick using items purchased from the **XP Shop**! Earn more XP inside our interactive Trivia module.
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button 
+                      onClick={() => {
+                        if (!purchases.some(p => p.itemId === 'goat_insurance')) {
+                          alert("Go to 'XP Shop' to purchase Premium GOAT Insurance first!");
+                          return;
+                        }
+                        setInsuranceApplied(!insuranceApplied);
+                      }}
+                      className={`p-2.5 rounded-xl border flex flex-col items-center gap-1.5 text-center transition-all ${
+                        insuranceApplied 
+                          ? 'bg-[#15341c] border-[#00e676] text-[#00e676]' 
+                          : purchases.some(p => p.itemId === 'goat_insurance')
+                            ? 'bg-[#1a1a23] border-[#34343d] text-white hover:border-[#ccff00]'
+                            : 'bg-[#121216] border-[#25252a] text-zinc-600 cursor-not-allowed opacity-50'
+                      }`}
+                    >
+                      <ShieldCheck size={16} />
+                      <span className="text-[9.5px] font-black uppercase tracking-wider">
+                        {insuranceApplied ? 'Insurance Applied' : 'Apply Insurance'}
+                      </span>
+                    </button>
+
+                    <button 
+                      onClick={() => {
+                        if (!purchases.some(p => p.itemId === 'stat_offset')) {
+                          alert("Go to 'XP Shop' to purchase Stat Offset Boosters!");
+                          return;
+                        }
+                        setOffsetApplied(!offsetApplied);
+                      }}
+                      className={`p-2.5 rounded-xl border flex flex-col items-center gap-1.5 text-center transition-all ${
+                        offsetApplied 
+                          ? 'bg-[#15341c] border-[#00e676] text-[#00e676]' 
+                          : purchases.some(p => p.itemId === 'stat_offset')
+                            ? 'bg-[#1a1a23] border-[#34343d] text-white hover:border-[#ccff00]'
+                            : 'bg-[#121216] border-[#25252a] text-zinc-600 cursor-not-allowed opacity-50'
+                      }`}
+                    >
+                      <Zap size={16} />
+                      <span className="text-[9.5px] font-black uppercase tracking-wider">
+                        {offsetApplied ? '+2 PTS Offset On' : 'Apply +2 Offset'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Matchup tickers */}
               <div className="space-y-2">
                 <div className="text-[10px] uppercase font-bold tracking-widest text-[#a3a3b3] flex items-center gap-1.5">
@@ -310,7 +437,7 @@ export default function App() {
                   <div className="text-[10px] uppercase font-bold tracking-widest text-[#a3a3b3] flex items-center gap-1.5">
                     <TrendingUp size={12} className="text-[#ccff00]" /> High Impact Roster
                   </div>
-                  <span className="text-[9px] text-[#a3a3b3]">Click stat bars to discover advanced charts</span>
+                  <span className="text-[9px] text-[#a3a3b3]">Click card to lock GOAT pick</span>
                 </div>
 
                 <div className="space-y-3">
@@ -340,7 +467,7 @@ export default function App() {
                             className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all ${
                               isSelected 
                                 ? 'bg-[#ccff00] text-black border-2 border-[#ccff00]' 
-                                : 'bg-[#121214] text-[#f5f5f5] hover:bg-[#1f1f23] border border-[#3e3e4a]'
+                               : 'bg-[#121214] text-[#f5f5f5] hover:bg-[#1f1f23] border border-[#3e3e4a]'
                             }`}
                           >
                             {isSelected && <Check size={11} />}
@@ -352,7 +479,9 @@ export default function App() {
                         <div className="grid grid-cols-3 gap-2 text-center bg-[#18181b] p-2 rounded-xl mb-3 border border-[#2b2b32]">
                           <div>
                             <div className="text-[9px] uppercase text-[#a3a3b3]">Points</div>
-                            <div className="text-sm font-bold text-white">{player.pts}</div>
+                            <div className="text-sm font-bold text-white">
+                              {player.pts} {isSelected && offsetApplied && <span className="text-[#ccff00] text-xs font-black font-mono"> (+2)</span>}
+                            </div>
                           </div>
                           <div>
                             <div className="text-[9px] uppercase text-[#a3a3b3]">Rebounds</div>
@@ -434,9 +563,11 @@ export default function App() {
                     <div key={idx} className="flex justify-between items-center py-2.5">
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-black text-center w-5 opacity-40">{idx + 1}</span>
-                        <div>
+                        <div className="flex items-center gap-1">
                           <p className="text-xs font-black">{user.username}</p>
-                          <p className="text-[10px] opacity-40 text-[#a3a3b3]">{user.picksCount} active nightly picks</p>
+                          {purchases.some(p => p.username === user.username && p.itemId === 'crown_badge') && (
+                            <Sparkles size={11} className="text-yellow-400" />
+                          )}
                         </div>
                       </div>
                       <span className="text-xs font-black text-[#ccff00] font-mono">{user.score} XP</span>
@@ -447,26 +578,51 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 3: TRIVIA */}
+          {/* TAB 3: TRIVIA COMPANION */}
           {activeTab === 'trivia' && (
             <div className="space-y-4">
               
-              {/* AI generator laboratory callout */}
-              <div className="bg-gradient-to-r from-[#202025] to-[#2c2c36] border border-[#3e3e4a] p-4 rounded-2xl flex flex-col items-center text-center gap-3 relative overflow-hidden">
-                <div className="absolute top-2 right-2 flex items-center gap-1 bg-[#ccff00]/10 text-[#ccff00] text-[8px] font-black uppercase px-2 py-0.5 rounded-full border border-[#ccff00]/20">
-                  <Cpu size={8} /> AI Active
+              {/* Rewards Callout banner */}
+              <div className="bg-gradient-to-r from-[#ccff00]/15 to-transparent border border-[#ccff00]/25 p-4 rounded-2xl space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Coins size={14} className="text-[#ccff00] animate-bounce" />
+                  <h3 className="text-xs uppercase font-black tracking-wider text-white">Interactive Fan Companion</h3>
                 </div>
-                <h3 className="text-xs uppercase font-extrabold tracking-wider text-white">Dynamic Trivia Miner</h3>
-                <p className="text-[10px] text-[#a3a3b3] leading-normal max-w-sm">
-                  Click below to trigger the server-side Gemini 3.5 AI. It will analyze your live players lists and formulate fresh fact-based challenges.
+                <p className="text-[10.5px] text-[#a3a3b3] leading-relaxed">
+                  Lock guesses during live TV broadcasts to earn **+50 XP points**. Spend points inside the **XP Shop** to redeem GOAT Insurance or offset stat boosters!
                 </p>
-                <button 
-                  onClick={handleMineTrivia}
-                  disabled={isMiningTrivia}
-                  className="bg-[#ccff00] hover:bg-[#b5e000] text-black font-black uppercase text-[10px] px-4 py-2.5 rounded-xl transition-all tracking-wider disabled:opacity-40"
-                >
-                  {isMiningTrivia ? 'AI MINING STATISTICS...' : 'MINE NEW AI TRIVIA'}
-                </button>
+              </div>
+
+              {/* AI generator laboratory callout */}
+              <div className="bg-gradient-to-b from-[#202025] to-[#151518] border border-[#3e3e4a] p-4 rounded-2xl flex flex-col items-center text-center gap-3 relative overflow-hidden">
+                <div className="absolute top-2 right-2 flex items-center gap-1 bg-[#ccff00]/10 text-[#ccff00] text-[8px] font-black uppercase px-2 py-0.5 rounded-full border border-[#ccff00]/20">
+                  <Cpu size={8} /> Gemini 3.5 Active
+                </div>
+                
+                <h3 className="text-xs uppercase font-extrabold tracking-wider text-white">Dynamic AI Trivia Miner</h3>
+                <p className="text-[10px] text-[#a3a3b3] leading-normal max-w-sm">
+                  Generate the next set of questions! Pick standard statistical analysis, or match the live broadcast using our game-mimic commentator model:
+                </p>
+
+                <div className="grid grid-cols-2 gap-2 w-full pt-1">
+                  <button 
+                    onClick={() => handleMineTrivia(false)}
+                    disabled={isMiningTrivia || isMiningMimic}
+                    className="bg-[#1a1a23] hover:bg-[#23232d] border border-[#353540] text-[#f5f5f5] font-extrabold uppercase text-[9px] py-3 rounded-xl transition-all tracking-wider disabled:opacity-40 flex flex-col items-center justify-center gap-1"
+                  >
+                    <Coins size={12} className="text-[#ccff00]" />
+                    <span>{isMiningTrivia ? 'MINING...' : 'STATISTICS TRIVIA'}</span>
+                  </button>
+
+                  <button 
+                    onClick={() => handleMineTrivia(true)}
+                    disabled={isMiningTrivia || isMiningMimic}
+                    className="bg-[#ccff00] hover:bg-[#b5e000] text-black font-black uppercase text-[9px] py-3 rounded-xl transition-all tracking-wider disabled:opacity-40 flex flex-col items-center justify-center gap-1 shadow-lg"
+                  >
+                    <Flame size={12} className="text-black animate-pulse" />
+                    <span>{isMiningMimic ? 'SIMULATING...' : 'MIMIC LIVE GAME'}</span>
+                  </button>
+                </div>
               </div>
 
               {/* Active list */}
@@ -476,10 +632,27 @@ export default function App() {
                   const hasAnswered = !!result;
 
                   return (
-                    <div key={t.id} className="bg-[#202025] border border-[#32323a] rounded-2xl p-4 gap-3 flex flex-col">
-                      <div className="flex items-start gap-2">
+                    <div key={t.id} className="bg-[#202025] border border-[#32323a] rounded-2xl p-4 gap-3 flex flex-col relative overflow-hidden">
+                      {/* Live indicator block */}
+                      <div className="flex justify-between items-center">
+                        <span className={`text-[8.5px] uppercase font-black px-2 py-0.5 rounded-md ${
+                          t.isLiveMimic 
+                            ? 'bg-rose-900/40 text-rose-400 border border-rose-500/30' 
+                            : 'bg-[#111113] text-[#ccff00]'
+                        }`}>
+                          {t.isLiveMimic ? '📡 Mimicked Court Commentary' : '📚 Factual Stat Milestone'}
+                        </span>
+                        {t.isLiveMimic && (
+                          <div className="flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
+                            <span className="text-[8px] uppercase font-bold text-rose-400 tracking-wider">LIVE MOCK FEED</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-start gap-2 pt-1">
                         <HelpCircle size={14} className="text-[#ccff00] flex-shrink-0 mt-0.5" />
-                        <h4 className="text-xs font-extrabold leading-normal">{t.question}</h4>
+                        <h4 className="text-xs font-extrabold leading-normal text-white">{t.question}</h4>
                       </div>
 
                       {/* Options Grid */}
@@ -517,7 +690,7 @@ export default function App() {
                           }`}>
                             {result.correct ? '🔥 Correct! +50 XP' : '❌ Incorrect'}
                           </p>
-                          <p className="text-[#a3a3b3] leading-relaxed font-medium">{result.explanation}</p>
+                          <p className="text-[#a3a3b3] leading-relaxed font-semibold">{result.explanation}</p>
                         </div>
                       )}
                     </div>
@@ -527,7 +700,114 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 4: FAN CONE / LIVE CHAT & VIDEO */}
+          {/* TAB 3.5: XP MARKETPLACE / CHECKOUT */}
+          {activeTab === 'xp-shop' && (
+            <div className="space-y-4">
+              <div className="bg-[#202025] border border-[#34343d] rounded-2xl p-4 space-y-3">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-xs uppercase font-black tracking-wider text-[#ccff00] flex items-center gap-1.5">
+                    <ShoppingBag size={14} /> XP Shop & Insurance Check
+                  </h3>
+                  <div className="text-[10px] bg-[#ccff00]/10 text-[#ccff00] font-black px-2 py-1 rounded-full border border-[#ccff00]/30 mr-1">
+                    {userXP} XP Balance
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-[#a3a3b3] leading-relaxed">
+                  Redeem your hard earned trivia expertise to purchase unique bonuses! Your items will automatically display on the Roster & Draft interface so you can apply them.
+                </p>
+
+                {purchaseStatus && (
+                  <div className="p-2.5 bg-[#121215] rounded-xl border border-[#ccff00]/30 text-[10px] font-bold text-center">
+                    {purchaseStatus}
+                  </div>
+                )}
+
+                {/* Items collection */}
+                <div className="space-y-3 font-sans">
+                  {/* Item 1 */}
+                  <div className="bg-[#141416] p-3.5 rounded-xl border border-[#2b2b32] flex justify-between items-center gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs font-black text-white">GOAT Nightly Insurance</span>
+                        <span className="text-[8px] font-black bg-rose-900/30 text-rose-400 px-1 py-0.5 rounded uppercase">Safety</span>
+                      </div>
+                      <p className="text-[9.5px] text-[#a3a3b3] leading-normal">
+                        Protects your active lock record even if your GOAT selection hits on ejections, limited minutes, or low final score.
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => handlePurchaseItem('goat_insurance', 150, 'GOAT Nightly Insurance')}
+                      className="bg-[#ccff00] text-black hover:bg-[#b5e000] font-black uppercase text-[9.5px] px-3.5 py-2.5 rounded-lg transition-all"
+                    >
+                      150 XP
+                    </button>
+                  </div>
+
+                  {/* Item 2 */}
+                  <div className="bg-[#141416] p-3.5 rounded-xl border border-[#2b2b32] flex justify-between items-center gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs font-black text-white">Stat Offset Booster (+2 PTS)</span>
+                        <span className="text-[8px] font-black bg-[#ccff00]/20 text-[#ccff00] px-1 py-0.5 rounded uppercase">Power-Up</span>
+                      </div>
+                      <p className="text-[9.5px] text-[#a3a3b3] leading-normal">
+                        Grants a +2 Points offset added directly onto your drafted player projection in aggregate game locks!
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => handlePurchaseItem('stat_offset', 100, 'Stat Offset Booster')}
+                      className="bg-[#ccff00] text-black hover:bg-[#b5e000] font-black uppercase text-[9.5px] px-3.5 py-2.5 rounded-lg transition-all"
+                    >
+                      100 XP
+                    </button>
+                  </div>
+
+                  {/* Item 3 */}
+                  <div className="bg-[#141416] p-3.5 rounded-xl border border-[#2b2b32] flex justify-between items-center gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs font-black text-white">Crown Fan Badge</span>
+                        <span className="text-[8px] font-black bg-violet-900/30 text-violet-400 px-1 py-0.5 rounded uppercase">Cosmetic</span>
+                      </div>
+                      <p className="text-[9.5px] text-[#a3a3b3] leading-normal">
+                        Instantly displays a gleaming star badge next to your profile in the Live Fan Zone and Standings lobbies.
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => handlePurchaseItem('crown_badge', 75, 'Crown Fan Badge')}
+                      className="bg-[#ccff00] text-black hover:bg-[#b5e000] font-black uppercase text-[9.5px] px-3.5 py-2.5 rounded-lg transition-all"
+                    >
+                      75 XP
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Inventory items */}
+              <div className="bg-[#202025] border border-[#34343d] rounded-2xl p-4 space-y-3">
+                <h3 className="text-xs uppercase font-extrabold tracking-wider text-white flex items-center gap-1.5 pt-1">
+                  <ShieldCheck size={14} className="text-[#ccff00]" /> Purchased Power-Up Inventory
+                </h3>
+                {purchases.length === 0 ? (
+                  <p className="text-[10px] text-zinc-500 italic">No purchased items in your lock companion today. Spend XP above!</p>
+                ) : (
+                  <div className="space-y-2">
+                    {purchases.map((p) => (
+                      <div key={p.id} className="bg-[#121214] p-3 rounded-xl border border-[#2b2b32] flex justify-between items-center text-[10.5px]">
+                        <span className="font-bold text-white flex items-center gap-1">
+                          🎁 {p.itemName} 
+                        </span>
+                        <span className="text-[9px] text-[#ccff00] uppercase font-black">Active in wallet</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: FAN ZONE / LIVE CHAT */}
           {activeTab === 'chat' && (
             <div className="space-y-4 flex flex-col h-[520px] justify-between">
               
@@ -536,7 +816,12 @@ export default function App() {
                 {chats.map((c, index) => (
                   <div key={index} className="bg-[#202025] rounded-xl p-3 border border-[#2b2b32] space-y-1.5">
                     <div className="flex justify-between items-center">
-                      <span className="text-[11px] font-black text-[#ccff00]">{c.username}</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[11px] font-black text-[#ccff00]">{c.username}</span>
+                        {purchases.some(p => p.username === c.username && p.itemId === 'crown_badge') && (
+                          <Sparkles size={10} className="text-yellow-400" />
+                        )}
+                      </div>
                       <span className="text-[9px] opacity-40 font-mono">{c.time}</span>
                     </div>
                     <p className="text-xs leading-relaxed opacity-90">{c.text}</p>
@@ -567,7 +852,7 @@ export default function App() {
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="Talk statistics, drafts..."
+                    placeholder="Talk statistics, drafts, trivia..."
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     className="bg-[#202025] text-xs px-3.5 py-2.5 rounded-xl outline-none flex-grow border border-[#2b2b32] text-white focus:border-[#ccff00]"
@@ -662,6 +947,16 @@ export default function App() {
           >
             <Trophy size={16} />
             <span className="text-[9px] uppercase font-bold tracking-wider">Lobby</span>
+          </button>
+
+          <button 
+            onClick={() => setActiveTab('xp-shop')}
+            className={`flex flex-col items-center gap-1 transition-all flex-1 ${
+              activeTab === 'xp-shop' ? 'text-[#ccff00]' : 'text-[#71717a] hover:text-[#a3a3b3]'
+            }`}
+          >
+            <ShoppingBag size={16} />
+            <span className="text-[9px] uppercase font-bold tracking-wider">XP Shop</span>
           </button>
 
           <button 
