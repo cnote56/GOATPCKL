@@ -51,17 +51,6 @@ export default function App() {
   const [insuranceApplied, setInsuranceApplied] = useState<boolean>(false);
   const [offsetApplied, setOffsetApplied] = useState<boolean>(false);
 
-  // Showdown & Battle Arena state properties
-  const [historicalLegends, setHistoricalLegends] = useState<any[]>([]);
-  const [userBets, setUserBets] = useState<any[]>([]);
-  const [selectedLegendId, setSelectedLegendId] = useState<string>('');
-  const [selectedBetStat, setSelectedBetStat] = useState<string>('pts');
-  const [betWagerAmount, setBetWagerAmount] = useState<string>('50');
-  const [selectedBetPlayer, setSelectedBetPlayer] = useState<string>('');
-  const [isSimulatingGames, setIsSimulatingGames] = useState<boolean>(false);
-  const [simulationResult, setSimulationResult] = useState<any | null>(null);
-  const [betResponseMsg, setBetResponseMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
-
   // Poll intervals
   useEffect(() => {
     fetchInitialData();
@@ -70,7 +59,6 @@ export default function App() {
       fetchChats();
       fetchLeaderboard();
       fetchPurchases(username);
-      fetchUserBets(username);
     }, 4000);
     return () => clearInterval(interval);
   }, [username]);
@@ -90,8 +78,6 @@ export default function App() {
       fetchChats();
       fetchLeaderboard();
       fetchPurchases(username);
-      fetchHistoricalLegends();
-      fetchUserBets(username);
     } catch (err) {
       console.error('Failed to load initial GOATPCKL data:', err);
     }
@@ -130,118 +116,6 @@ export default function App() {
       }
     } catch (err) {
       console.error('Failed to fetch user purchases:', err);
-    }
-  };
-
-  const fetchHistoricalLegends = async () => {
-    try {
-      const res = await fetch('/api/historical-legends');
-      const data = await res.json();
-      setHistoricalLegends(data);
-      if (data.length > 0) {
-        setSelectedLegendId(data[0].id);
-      }
-    } catch (err) {
-      console.error('Failed to load historical legends:', err);
-    }
-  };
-
-  const fetchUserBets = async (user: string) => {
-    try {
-      const res = await fetch(`/api/bets?username=${encodeURIComponent(user)}`);
-      const data = await res.json();
-      setUserBets(data);
-    } catch (err) {
-      console.error('Failed to load user bets:', err);
-    }
-  };
-
-  const handlePlaceBet = async () => {
-    setBetResponseMsg(null);
-    if (!selectedBetPlayer) {
-      setBetResponseMsg({ type: 'error', text: 'Select one of tonight\'s active players first!' });
-      return;
-    }
-    if (!selectedLegendId) {
-      setBetResponseMsg({ type: 'error', text: 'Select a Historical Legend to match!' });
-      return;
-    }
-    const cost = parseInt(betWagerAmount);
-    if (isNaN(cost) || cost <= 0) {
-      setBetResponseMsg({ type: 'error', text: 'Enter a valid positive XP wager!' });
-      return;
-    }
-    if (userXP < cost) {
-      setBetResponseMsg({ type: 'error', text: `Insufficient balance! You need ${cost} XP but only have ${userXP} XP.` });
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/bets/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username,
-          player: selectedBetPlayer,
-          legendId: selectedLegendId,
-          stat: selectedBetStat,
-          betValue: cost
-        })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setUserBets(data.bets);
-        setBetResponseMsg({ type: 'success', text: `🎲 Locked XP battle wager: Tonight's ${selectedBetPlayer} vs Legend in ${selectedBetStat.toUpperCase()} for ${cost} XP!` });
-        fetchLeaderboard();
-      } else {
-        setBetResponseMsg({ type: 'error', text: data.error || 'Failed to lock wager' });
-      }
-    } catch (err) {
-      console.error('Bet submission failed:', err);
-      setBetResponseMsg({ type: 'error', text: 'Server error locking your battle wager.' });
-    }
-  };
-
-  const handleSimulateGameNight = async () => {
-    setIsSimulatingGames(true);
-    setSimulationResult(null);
-    try {
-      const res = await fetch('/api/games/simulate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSimulationResult(data);
-        setPlayers(prev => {
-          return prev.map(p => {
-            const tonightStats = data.playerStatsTonight[p.name];
-            if (tonightStats) {
-              return {
-                ...p,
-                pts: tonightStats.pts,
-                reb: tonightStats.reb,
-                ast: tonightStats.ast,
-                stl: tonightStats.stl,
-                blk: tonightStats.blk
-              };
-            }
-            return p;
-          });
-        });
-        setGames(data.games);
-        setLeaderboard(data.leaderboard);
-        setUserBets(data.bets);
-        setChats(data.chats);
-        setPurchases(data.purchases);
-      } else {
-        alert(data.error || 'Failed to simulate court night.');
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSimulatingGames(false);
     }
   };
 
@@ -539,7 +413,7 @@ export default function App() {
 
               {/* Matchup tickers */}
               <div className="space-y-2">
-                <div className="text-[10px] uppercase font-bold tracking-widest text-[#a3a3b3] flex items-center gap-1.5 font-sans">
+                <div className="text-[10px] uppercase font-bold tracking-widest text-[#a3a3b3] flex items-center gap-1.5">
                   <Tv size={12} className="text-[#ccff00]" /> Nightly Matchups
                 </div>
                 <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
@@ -557,174 +431,10 @@ export default function App() {
                 </div>
               </div>
 
-              {/* GOAT Battle Arena Section */}
-              <div className="bg-[#202025] border border-[#34343d] rounded-2xl p-4 space-y-3 shadow-lg">
-                <div className="flex justify-between items-center pb-2 border-b border-[#2d2d34]">
-                  <h3 className="text-xs uppercase font-extrabold tracking-wider text-[#ccff00] flex items-center gap-1.5 font-sans">
-                    ⚔️ GOAT Battle Arena
-                  </h3>
-                  <span className="text-[9px] uppercase font-bold text-[#a3a3b3]">Wager: Tonight vs Historic Giants</span>
-                </div>
-
-                <p className="text-[10px] text-[#a3a3b3] leading-relaxed">
-                  Pitch tonight's performers against the supreme historical benchmarks of legendary holiday/monthly milestones. Stake XP score to double or refund wagers!
-                </p>
-
-                {/* Simulation overlay button triggers simulation on backend and publishes chat alerts */}
-                <button
-                  onClick={handleSimulateGameNight}
-                  disabled={isSimulatingGames}
-                  className={`w-full py-3 px-4 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${
-                    isSimulatingGames
-                      ? 'bg-[#ccff00]/10 text-zinc-500 border border-zinc-700 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-[#ccff00] to-[#00e676] text-black hover:scale-[1.01] hover:shadow-lg active:scale-1 w-full shadow-md cursor-pointer'
-                  }`}
-                >
-                  {isSimulatingGames ? (
-                    <div className="flex items-center gap-2 animate-pulse">
-                      <div className="w-3.5 h-3.5 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin"></div>
-                      <span>Simulating Court Actions...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <Zap size={14} className="animate-pulse" />
-                      <span>Simulate Game Night Results</span>
-                    </>
-                  )}
-                </button>
-
-                {/* Simulation Results Alert if available */}
-                {simulationResult && (
-                  <div className="bg-[#15341c]/50 border border-[#00e676]/40 p-3 rounded-xl space-y-2 animate-fadeIn text-[10.5px]">
-                    <div className="flex justify-between items-center">
-                      <span className="font-extrabold text-[#00e676] uppercase tracking-wide">⚡ Simulation Complete</span>
-                      <span className="text-[9px] text-[#00e676] font-bold">Processed Tonight</span>
-                    </div>
-                    <p className="text-[#a3a3b3] font-semibold text-xs">
-                      Tonight's games finished! Selected stats simulated, XP locks evaluated, and standard draft entries settled. Custom commentary published to lobby chat.
-                    </p>
-                    <div className="bg-[#121214] p-2 rounded text-[10px] space-y-1 text-zinc-300 font-mono">
-                      <p>• Tonight's XP: <span className="text-[#ccff00] font-bold">+{simulationResult.totalXPEarned} XP gained</span></p>
-                      <p>• {simulationResult.pickAwardText}</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Lock Bet Wager Form */}
-                <div className="bg-[#17171a] p-3 rounded-xl border border-[#2d2d34] space-y-3 text-[11px]">
-                  {/* Step 1: Select Active Player */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-extrabold text-[#a3a3b3]">1. Select Draft Pick for Tonight</label>
-                    <select
-                      value={selectedBetPlayer}
-                      onChange={(e) => setSelectedBetPlayer(e.target.value)}
-                      className="w-full bg-[#202025] text-white py-2 px-2.5 rounded-lg border border-[#3e3e46] font-bold outline-none cursor-pointer"
-                    >
-                      <option value="">-- Choose active player --</option>
-                      {players.map(p => (
-                        <option key={p.id} value={p.name}>{p.name} ({p.team})</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Step 2: Select Historical Legend */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-extrabold text-[#a3a3b3]">2. Pick Historical Battle Marker</label>
-                    <select
-                      value={selectedLegendId}
-                      onChange={(e) => setSelectedLegendId(e.target.value)}
-                      className="w-full bg-[#202025] text-white py-2 px-2.5 rounded-lg border border-[#3e3e46] font-bold outline-none cursor-pointer text-xs"
-                    >
-                      {historicalLegends.map(hl => (
-                        <option key={hl.id} value={hl.id}>
-                          {hl.player} - {hl.holiday} [PTS:{hl.pts} / REB:{hl.reb} / AST:{hl.ast}]
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Stat Category and Wager limit */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-extrabold text-[#a3a3b3]">3. Category</label>
-                      <select
-                        value={selectedBetStat}
-                        onChange={(e) => setSelectedBetStat(e.target.value)}
-                        className="w-full bg-[#202025] text-white py-2 px-2.5 rounded-lg border border-[#3e3e46] font-bold outline-none cursor-pointer"
-                      >
-                        <option value="pts">Points (PTS)</option>
-                        <option value="reb">Rebounds (REB)</option>
-                        <option value="ast">Assists (AST)</option>
-                        <option value="stl">Steals (STL)</option>
-                        <option value="blk">Blocks (BLK)</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-extrabold text-[#a3a3b3]">4. XP Wager</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="500"
-                        value={betWagerAmount}
-                        onChange={(e) => setBetWagerAmount(e.target.value)}
-                        className="w-full bg-[#202025] text-white py-1.5 px-2.5 rounded-lg border border-[#3e3e46] font-bold outline-none text-center font-mono"
-                      />
-                    </div>
-                  </div>
-
-                  {betResponseMsg && (
-                    <div className={`p-2 rounded-lg font-bold text-[10px] text-center ${
-                      betResponseMsg.type === 'success' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/30' : 'bg-rose-950/40 text-rose-400 border border-rose-500/30'
-                    }`}>
-                      {betResponseMsg.text}
-                    </div>
-                  )}
-
-                  <button
-                    onClick={handlePlaceBet}
-                    className="w-full bg-[#ccff00] text-black hover:bg-[#b5e000] font-black uppercase text-[10px] py-2.5 rounded-xl transition-all shadow cursor-pointer"
-                  >
-                    Lock Matchup Battle Bet
-                  </button>
-                </div>
-
-                {/* List of active/settled bets */}
-                {userBets.length > 0 && (
-                  <div className="space-y-2 pt-1 font-sans">
-                    <h4 className="text-[9.5px] uppercase font-extrabold text-zinc-400 tracking-wider">Locked Battle Showdowns</h4>
-                    <div className="space-y-2 max-h-40 overflow-y-auto scrollbar-thin">
-                      {userBets.map(b => (
-                        <div key={b.id} className="bg-[#151518] p-2.5 rounded-xl border border-[#2b2b30] text-[10px] space-y-1 uppercase font-semibold">
-                          <div className="flex justify-between items-center text-[9px]">
-                            <span className="font-extrabold text-[#ccff00]">Tonight's {b.player} vs {b.legendName}</span>
-                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-black shrink-0 ${
-                              b.status === 'pending'
-                                ? 'bg-zinc-800 text-zinc-400'
-                                : b.status === 'won'
-                                  ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-500/20'
-                                  : b.status === 'shielded'
-                                    ? 'bg-amber-900/30 text-amber-500 border border-amber-500/20'
-                                    : 'bg-rose-900/30 text-rose-400 border border-rose-500/20'
-                            }`}>
-                              {b.status}
-                            </span>
-                          </div>
-                          <p className="text-zinc-400 italic"> Wager: {b.betValue} XP in {b.stat.toUpperCase()} (Target: {b.legendVal} - {b.holiday})</p>
-                          {b.resultCommentary && (
-                            <p className="normal-case text-zinc-400 bg-black/40 p-1.5 rounded mt-1 font-sans leading-relaxed text-[8.5px] border border-zinc-800/60 font-medium text-left">✨ commentary: {b.resultCommentary}</p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
               {/* Roster list */}
               <div className="space-y-3">
                 <div className="flex justify-between items-center shadow-sm">
-                  <div className="text-[10px] uppercase font-bold tracking-widest text-[#a3a3b3] flex items-center gap-1.5 font-sans">
+                  <div className="text-[10px] uppercase font-bold tracking-widest text-[#a3a3b3] flex items-center gap-1.5">
                     <TrendingUp size={12} className="text-[#ccff00]" /> High Impact Roster
                   </div>
                   <span className="text-[9px] text-[#a3a3b3]">Click card to lock GOAT pick</span>
@@ -743,7 +453,7 @@ export default function App() {
                         }`}
                       >
                         {/* Player Basic Heading */}
-                        <div className="flex justify-between items-start mb-2">
+                        <div className="flex justify-between items-start mb-3">
                           <div>
                             <span className="bg-[#111113] text-[#ccff00] text-[9px] font-extrabold px-1.5 py-0.5 rounded-md tracking-wider mr-2 uppercase">
                               {player.team} • {player.position}
@@ -754,34 +464,15 @@ export default function App() {
                           {/* Pick GOAT Action */}
                           <button 
                             onClick={() => handleVoteGOAT(player.name)}
-                            className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer ${
+                            className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all ${
                               isSelected 
                                 ? 'bg-[#ccff00] text-black border-2 border-[#ccff00]' 
-                               : 'bg-[#121214] text-[#f5f5f5] hover:bg-[#1f1f23] border border-[#3e3e4a]'
+                                : 'bg-[#121214] text-[#f5f5f5] hover:bg-[#1f1f23] border border-[#3e3e4a]'
                             }`}
                           >
                             {isSelected && <Check size={11} />}
                             {isSelected ? 'My GOAT' : 'GOAT PICK'}
                           </button>
-                        </div>
-
-                        {/* Computed Dynamic achievements / badges from the Novel Stats Engine */}
-                        <div className="flex flex-wrap gap-1 mb-2">
-                          {player.achievements && player.achievements.map((ach: string) => {
-                            const isSpecial = ach !== 'High Impact Roleplayer' && ach !== 'Elite Scoring Weapon';
-                            return (
-                              <span 
-                                key={ach} 
-                                className={`inline-block rounded text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 ${
-                                  isSpecial 
-                                    ? 'bg-[#ccff00]/15 text-[#ccff00] border border-[#ccff00]/30 animate-pulse' 
-                                    : 'bg-[#191922] text-[#a3a3b3] border border-[#2b2b33]'
-                                }`}
-                              >
-                                ✨ {ach}
-                              </span>
-                            );
-                          })}
                         </div>
 
                         {/* Player Quick Metric bars in ESPN style */}
@@ -847,7 +538,7 @@ export default function App() {
                     return (
                       <div key={player.id} className="space-y-1">
                         <div className="flex justify-between text-xs font-bold">
-                          <span>{player.name} ({player.team})</span>
+                           <span>{player.name} ({player.team})</span>
                           <span className="text-[#ccff00] font-mono">{count} Picks ({percent}%)</span>
                         </div>
                         <div className="w-full bg-[#121214] h-2 rounded-full overflow-hidden">

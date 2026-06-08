@@ -4,31 +4,21 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { MongoClient, Db } from 'mongodb';
 import { GoogleGenAI, Type } from '@google/genai';
-import { seededTrivia } from './src/triviaData';
+import { seededTrivia } from '../triviaData';
 
 const isESM = typeof import.meta !== 'undefined' && typeof import.meta.url !== 'undefined';
 const __filename = isESM ? fileURLToPath(import.meta.url) : '';
 const __dirname = isESM ? path.dirname(__filename) : '';
 
-// Lazy initialization for Gemini Client
-let aiClient: GoogleGenAI | null = null;
-function getAiClient(): GoogleGenAI {
-  if (!aiClient) {
-    const key = process.env.GEMINI_API_KEY;
-    if (!key) {
-      throw new Error('GEMINI_API_KEY environment variable is required');
+// Initialize Gemini Client
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+  httpOptions: {
+    headers: {
+      'User-Agent': 'aistudio-build',
     }
-    aiClient = new GoogleGenAI({
-      apiKey: key,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
   }
-  return aiClient;
-}
+});
 
 // Lazy initialization for MongoDB
 let dbClient: MongoClient | null = null;
@@ -76,50 +66,6 @@ const defaultGames = [
 
 const defaultTrivia = [...seededTrivia];
 
-function getNovelStats(player: any): string[] {
-  const achievements: string[] = [];
-  const pts = parseFloat(player.pts) || 0;
-  const reb = parseFloat(player.reb) || 0;
-  const ast = parseFloat(player.ast) || 0;
-  const stl = parseFloat(player.stl) || 0;
-  const blk = parseFloat(player.blk) || 0;
-
-  // 1. Triple Threat MVP (Leads team in scoring, rebounds and playmaking)
-  if (pts >= 25 && ast >= 6 && reb >= 6) {
-    achievements.push('Triple Threat MVP');
-  }
-  // 2. Playmaker general (Court general leads playmaking and defense)
-  if (ast >= 8 && stl >= 1.2) {
-    achievements.push('Court General');
-  }
-  // 3. Defensive anchor
-  if (stl >= 1.3 && blk >= 0.8) {
-    achievements.push('Lockdown Guardian');
-  }
-  // 4. Elite sniper (High 3P%)
-  const fg3PctVal = player.fg3Pct ? parseFloat(player.fg3Pct.replace('%', '')) : 0;
-  if (fg3PctVal >= 40 || (pts >= 26 && fg3PctVal >= 38)) {
-    achievements.push('Deadly Sniper');
-  }
-  // 5. Block / Steal supreme
-  if (stl >= 2.0 || blk >= 1.0) {
-    achievements.push('Clutch Thief');
-  }
-  // 6. Paint Dominator
-  if (reb >= 10 && pts >= 20) {
-    achievements.push('Paint Dominator');
-  }
-
-  if (achievements.length === 0 && pts >= 25) {
-    achievements.push('Elite Scoring Weapon');
-  }
-  if (achievements.length === 0) {
-    achievements.push('High Impact Roleplayer');
-  }
-
-  return achievements;
-}
-
 let inMemoryStorage = {
   players: [...defaultPlayers],
   games: [...defaultGames],
@@ -138,19 +84,6 @@ let inMemoryStorage = {
     { username: 'Cole', score: 450, picksCount: 12 },
     { username: 'SplashFan', score: 380, picksCount: 10 },
     { username: 'DunkMaster', score: 320, picksCount: 11 }
-  ],
-  bets: [] as any[],
-  historicalLegends: [
-    { id: 'h1', holiday: 'Christmas Day (2023)', player: 'LeBron James', pts: 46, reb: 10, ast: 11, stl: 5, blk: 1 },
-    { id: 'h2', holiday: 'Christmas Day (2023)', player: 'Giannis Antetokounmpo', pts: 36, reb: 19, ast: 4, stl: 1, blk: 5 },
-    { id: 'h3', holiday: 'MLK Day (2023)', player: 'LeBron James', pts: 48, reb: 8, ast: 9, stl: 2, blk: 0 },
-    { id: 'h4', holiday: 'MLK Day (2022)', player: 'Stephen Curry', pts: 40, reb: 4, ast: 8, stl: 4, blk: 1 },
-    { id: 'h5', holiday: 'Thanksgiving (2023)', player: 'Kevin Durant', pts: 38, reb: 7, ast: 8, stl: 1, blk: 2 },
-    { id: 'h6', holiday: 'Thanksgiving (2023)', player: 'Nikola Jokic', pts: 35, reb: 15, ast: 12, stl: 3, blk: 1 },
-    { id: 'h7', holiday: 'December Matchup (Historic Peak)', player: 'Luka Doncic', pts: 50, reb: 8, ast: 10, stl: 3, blk: 1 },
-    { id: 'h8', holiday: 'December Avg Standard', player: 'Nikola Jokic', pts: 30, reb: 15, ast: 10, stl: 2, blk: 1 },
-    { id: 'h9', holiday: 'January Average Standard', player: 'Giannis Antetokounmpo', pts: 32, reb: 13, ast: 6, stl: 1, blk: 2 },
-    { id: 'h10', holiday: 'February Average Standard', player: 'Jayson Tatum', pts: 29, reb: 8, ast: 5, stl: 1, blk: 1 }
   ]
 };
 
@@ -202,27 +135,20 @@ async function startServer() {
 
   app.use(express.json({ limit: '10mb' }));
 
-  // Initialize DB & Syncing (non-blocking background call)
-  seedDatabase().catch(err => {
-    console.error('Failed to seed database in background:', err);
-  });
+  // Initialize DB & Syncing
+  await seedDatabase();
 
   // --- API Routes ---
 
-  // 1. Get All Players / Stats (Mapped dynamically with Novel Achievements tags)
+  // 1. Get All Players / Stats
   app.get('/api/players', async (req: any, res: any) => {
     const db = await getDb();
-    let rPlayers: any[] = [];
     if (db) {
-      rPlayers = await db.collection('players').find({}).toArray();
+      const dbPlayers = await db.collection('players').find({}).toArray();
+      res.json(dbPlayers);
     } else {
-      rPlayers = inMemoryStorage.players;
+      res.json(inMemoryStorage.players);
     }
-    const mapped = rPlayers.map((p: any) => ({
-      ...p,
-      achievements: getNovelStats(p)
-    }));
-    res.json(mapped);
   });
 
   // 2. CSV Upload Endpoint to parse Cole's real-world database / stats
@@ -279,320 +205,6 @@ async function startServer() {
       console.error('CSV Import Error:', err);
       res.status(500).json({ error: 'Failed to process CSV file', details: err.message });
     }
-  });
-
-  // 2b. Pull Historical Holiday / Month Average Landmarks
-  app.get('/api/historical-legends', (req: any, res: any) => {
-    res.json(inMemoryStorage.historicalLegends);
-  });
-
-  // 2c. Get Active User Bets
-  app.get('/api/bets', async (req: any, res: any) => {
-    const { username } = req.query;
-    if (!username) return res.status(400).json({ error: 'Missing username' });
-    const db = await getDb();
-    if (db) {
-      const userBets = await db.collection('bets').find({ username }).toArray();
-      res.json(userBets);
-    } else {
-      const userBets = (inMemoryStorage.bets || []).filter((b: any) => b.username === username);
-      res.json(userBets);
-    }
-  });
-
-  // 2d. Record/Submit XP Wager on Tonight's Chosen vs Historical Giant
-  app.post('/api/bets/submit', async (req: any, res: any) => {
-    const { username, player, legendId, stat, betValue } = req.body;
-    if (!username || !player || !legendId || !stat || !betValue) {
-      return res.status(400).json({ error: 'Missing required betting options' });
-    }
-
-    const value = parseInt(betValue);
-    if (isNaN(value) || value <= 0) {
-      return res.status(400).json({ error: 'Bet value must be a positive integer.' });
-    }
-
-    const db = await getDb();
-    let currentScore = 0;
-
-    if (db) {
-      const userLd = await db.collection('leaderboard').findOne({ username });
-      if (userLd) currentScore = userLd.score || 0;
-    } else {
-      const userLd = inMemoryStorage.leaderboard.find(l => l.username === username);
-      if (userLd) currentScore = userLd.score || 0;
-    }
-
-    if (currentScore < value) {
-      return res.status(400).json({ error: `You have insufficient XP balance. You need ${value} XP, but only have ${currentScore} XP.` });
-    }
-
-    const legendPlayer = inMemoryStorage.historicalLegends.find(hl => hl.id === legendId);
-    if (!legendPlayer) {
-      return res.status(404).json({ error: 'Historical legend not found.' });
-    }
-
-    const newBet = {
-      id: `bet-${Date.now()}`,
-      username,
-      player,
-      legendId,
-      legendName: legendPlayer.player,
-      legendVal: (legendPlayer as any)[stat] || 0,
-      holiday: legendPlayer.holiday,
-      stat,
-      betValue: value,
-      status: 'pending',
-      resultCommentary: null
-    };
-
-    const deduction = -value;
-
-    if (db) {
-      await db.collection('leaderboard').updateOne(
-        { username },
-        { $inc: { score: deduction } }
-      );
-      await db.collection('bets').insertOne(newBet);
-      const userBets = await db.collection('bets').find({ username }).toArray();
-      res.json({ success: true, bets: userBets });
-    } else {
-      const userLd = inMemoryStorage.leaderboard.find(l => l.username === username);
-      if (userLd) userLd.score += deduction;
-
-      if (!inMemoryStorage.bets) inMemoryStorage.bets = [];
-      inMemoryStorage.bets.push(newBet);
-      const userBets = inMemoryStorage.bets.filter((b: any) => b.username === username);
-      res.json({ success: true, bets: userBets });
-    }
-  });
-
-  // 2e. Simulate Live Court Action and Resolve All Standard Selection & XP Battles
-  app.post('/api/games/simulate', async (req: any, res: any) => {
-    const { username } = req.body;
-    const db = await getDb();
-
-    let activePlayers: any[] = [];
-    let rGames: any[] = [];
-    if (db) {
-      activePlayers = await db.collection('players').find({}).toArray();
-      rGames = await db.collection('games').find({}).toArray();
-    } else {
-      activePlayers = inMemoryStorage.players;
-      rGames = inMemoryStorage.games;
-    }
-
-    // Generate simulated actual performance for tonight's games
-    const playerStatsTonight: { [name: string]: any } = {};
-    activePlayers.forEach(p => {
-      const pAvgPts = parseFloat(p.pts) || 20;
-      const pAvgReb = parseFloat(p.reb) || 6;
-      const pAvgAst = parseFloat(p.ast) || 5;
-      const pAvgStl = parseFloat(p.stl) || 1.1;
-      const pAvgBlk = parseFloat(p.blk) || 0.6;
-
-      const ptsOffset = Math.floor(Math.random() * 15) - 6; // -6 to +8
-      const rebOffset = Math.floor(Math.random() * 6) - 2;
-      const astOffset = Math.floor(Math.random() * 5) - 2;
-
-      playerStatsTonight[p.name] = {
-        name: p.name,
-        pts: Math.max(12, Math.round(pAvgPts + ptsOffset)),
-        reb: Math.max(2, Math.round(pAvgReb + rebOffset)),
-        ast: Math.max(1, Math.round(pAvgAst + astOffset)),
-        stl: Math.max(0, Math.round(pAvgStl + (Math.random() > 0.5 ? 1 : -1))),
-        blk: Math.max(0, Math.round(pAvgBlk + (Math.random() > 0.6 ? 1 : 0)))
-      };
-    });
-
-    const simulatedGames = rGames.map(g => {
-      if (g.status === 'upcoming' || g.date === 'Tonight') {
-        const score1 = Math.round(102 + Math.random() * 22);
-        const score2 = Math.round(102 + Math.random() * 22);
-        return {
-          ...g,
-          status: 'completed',
-          score: `${score1}-${score2}`,
-          date: 'Completed Tonight'
-        };
-      }
-      return g;
-    });
-
-    if (db) {
-      await db.collection('games').deleteMany({});
-      await db.collection('games').insertMany(simulatedGames);
-    } else {
-      inMemoryStorage.games = simulatedGames;
-    }
-
-    let allPicks: any[] = [];
-    if (db) {
-      allPicks = await db.collection('picks').find({}).toArray();
-    } else {
-      allPicks = inMemoryStorage.picks;
-    }
-
-    let hasInsurance = false;
-    let hasOffset = false;
-    let activePurchases: any[] = [];
-
-    if (db) {
-      activePurchases = await db.collection('xp_purchases').find({ username }).toArray();
-    } else {
-      activePurchases = (inMemoryStorage as any).purchases || [];
-    }
-
-    hasInsurance = activePurchases.some(p => p.itemId === 'goat_insurance');
-    hasOffset = activePurchases.some(p => p.itemId === 'stat_offset');
-
-    const userPick = allPicks.find(p => p.username === username);
-    let pickPointsEarned = 0;
-    let pickAwardText = '';
-
-    if (userPick) {
-      const pStats = playerStatsTonight[userPick.player];
-      if (pStats) {
-        let scored = pStats.pts;
-        const baseline = parseFloat(activePlayers.find(pl => pl.name === userPick.player)?.pts) || 20;
-
-        if (hasOffset) scored += 2;
-
-        if (scored >= baseline) {
-          pickPointsEarned = 100;
-          pickAwardText = `🏆 Pick Success: ${userPick.player} outperformed season benchmarks scoring ${scored} PTS! Received +100 XP.`;
-        } else if (hasInsurance) {
-          pickPointsEarned = 50;
-          pickAwardText = `🛡️ Insurance Shield: ${userPick.player} scored ${scored} PTS (below baseline), but GOAT Nightly Insurance saved your lock! Obtained +50 XP.`;
-        } else {
-          pickAwardText = `❌ Pick Failed: ${userPick.player} got ${scored} PTS, which missed season average. Better luck next game.`;
-        }
-      }
-    }
-
-    let userBets: any[] = [];
-    if (db) {
-      userBets = await db.collection('bets').find({ username }).toArray();
-    } else {
-      userBets = inMemoryStorage.bets || [];
-    }
-
-    let betXPEarned = 0;
-    const evaluatedBets = userBets.map(bet => {
-      if (bet.status === 'pending') {
-        const pStats = playerStatsTonight[bet.player];
-        const legend = inMemoryStorage.historicalLegends.find(lh => lh.id === bet.legendId);
-        
-        if (pStats && legend) {
-          let tonVal = pStats[bet.stat] || 0;
-          let legVal = (legend as any)[bet.stat] || 0;
-          
-          let won = tonVal > legVal;
-          if (bet.stat === 'pts' && hasOffset) won = (tonVal + 2) > legVal;
-
-          if (won) {
-            const reward = bet.betValue * 2;
-            betXPEarned += reward;
-            return {
-              ...bet,
-              status: 'won',
-              resultCommentary: `Winner! Tonight's ${bet.player} logged ${tonVal} ${bet.stat.toUpperCase()} which beat ${legend.player}'s historical line of ${legVal} from ${legend.holiday}! Paid +${reward} XP.`
-            };
-          } else if (hasInsurance) {
-            const refund = bet.betValue + 50;
-            betXPEarned += refund;
-            return {
-              ...bet,
-              status: 'shielded',
-              resultCommentary: `Shielded! Tonight's ${bet.player} scored ${tonVal} ${bet.stat.toUpperCase()} failing to beat historic giants, but GOAT Nightly Insurance triggered! Refunded ${bet.betValue} XP + awarded +50 XP shield bonus.`
-            };
-          } else {
-            return {
-              ...bet,
-              status: 'lost',
-              resultCommentary: `Lost! Tonight's ${bet.player} logged ${tonVal} ${bet.stat.toUpperCase()} which fell short against ${legend.player}'s legendary ${legVal} from ${legend.holiday}. Deducted ${bet.betValue} XP.`
-            };
-          }
-        }
-      }
-      return bet;
-    });
-
-    if (db) {
-      await db.collection('bets').deleteMany({ username });
-      if (evaluatedBets.length > 0) {
-        await db.collection('bets').insertMany(evaluatedBets);
-      }
-    } else {
-      inMemoryStorage.bets = evaluatedBets;
-    }
-
-    const totalXPToAdd = pickPointsEarned + betXPEarned;
-    if (totalXPToAdd > 0) {
-      if (db) {
-        await db.collection('leaderboard').updateOne(
-          { username },
-          { $inc: { score: totalXPToAdd } }
-        );
-      } else {
-        const userLd = inMemoryStorage.leaderboard.find(l => l.username === username);
-        if (userLd) userLd.score += totalXPToAdd;
-      }
-    }
-
-    const clearedPurchases = activePurchases.filter(p => p.itemId !== 'goat_insurance' && p.itemId !== 'stat_offset');
-    if (db) {
-      await db.collection('xp_purchases').deleteMany({ username });
-      if (clearedPurchases.length > 0) {
-        await db.collection('xp_purchases').insertMany(clearedPurchases);
-      }
-    } else {
-      (inMemoryStorage as any).purchases = clearedPurchases;
-    }
-
-    const simulatedCommentaryText = `🎙️ [GOATPCKL ANCHOR REPORT] TONIGHT'S LIVE COURTS SIMULATED ACCORDINGLY! 
-
-    Tonight's Core Box Score Highlights & Custom Badges Witnessed:
-    ${Object.keys(playerStatsTonight).map(name => {
-      const s = playerStatsTonight[name];
-      const statsAchievements = getNovelStats(s);
-      return `🏀 ${s.name}: ${s.pts} PTS, ${s.reb} REB, ${s.ast} AST, ${s.stl} STL, ${s.blk} BLK [Dynamic Badges: ${statsAchievements.join(', ')}]`;
-    }).join('\n')}
-
-    User Account Record updates for ${username}:
-    ${pickAwardText || '• No active picks lock registered for tonight.'}
-    ${evaluatedBets.map(eb => `• Bet Outcome: ${eb.resultCommentary}`).join('\n') || '• No active bets placed against historical holiday giants.'}
-
-    Total Score Earned: +${totalXPToAdd} XP! All matchup rosters and shop power-ups have reset for the next live court list. Check the Lobby standings to see your updated leaderboard rank!`;
-
-    const commentatorMessage = {
-      username: 'Goat Commentator AI',
-      text: simulatedCommentaryText,
-      videoUrl: null,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-
-    inMemoryStorage.chats.push(commentatorMessage);
-
-    let finalLeaderboard = [];
-    if (db) {
-      finalLeaderboard = await db.collection('leaderboard').find({}).sort({ score: -1 }).toArray();
-    } else {
-      finalLeaderboard = [...inMemoryStorage.leaderboard].sort((a, b) => b.score - a.score);
-    }
-
-    res.json({
-      success: true,
-      message: 'Games simulated and settled successfully!',
-      playerStatsTonight,
-      pickAwardText,
-      totalXPEarned: totalXPToAdd,
-      leaderboard: finalLeaderboard,
-      bets: evaluatedBets,
-      chats: inMemoryStorage.chats,
-      games: simulatedGames,
-      purchases: clearedPurchases
-    });
   });
 
   // 3. Get Active Matchups
@@ -708,7 +320,7 @@ async function startServer() {
         Only return the clean, stringified JSON array. Do not include markdown code block syntax or extra text.`;
       }
 
-      const response = await getAiClient().models.generateContent({
+      const response = await ai.models.generateContent({
         model: 'gemini-3.5-flash',
         contents: prompt,
         config: {

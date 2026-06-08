@@ -1,7 +1,7 @@
 # GOATPCKL (GOAT PICKLE)
 ### The Ultimate Nightly NBA Player Tracking, Trivia, & Fan Hub
 
-GOATPCKL is a high-octane, DraftKings-and-ESPN-style fantasy application designed for tracking nightly player performances, voting on the "Nightly GOAT" picks, engaging with live fan chat (highlight video sharing), and competing in fact-based trivia mined by server-side Gemini AI.
+GOATPCKL is a high-octane, DraftKings-and-ESPN-style fantasy application designed for tracking nightly player performances, voting on the "Nightly GOAT" picks, engaging with live fan chat (highlight video sharing), competing in fact-based trivia mined by server-side Gemini AI, and wagering XP on player matchups vs. historical basketball legends.
 
 ---
 
@@ -21,7 +21,37 @@ The backend uses **Mongoose/MongoDB Native Client** with automatic, multi-tier s
   - `trivia_questions`: Stores questions, options, correct answers, and expert explanations.
   - `picks`: Tracks live usernames and their selected nightly GOAT.
   - `leaderboard`: Records player experience points (XP) earned from correct trivia submissions (+50 XP) and nightly GOAT selections (+10 XP).
+  - `bets`: Stores active match wagers against historical legend profiles.
+  - `xp_purchases`: Records active booster perks acquired from the XP Shop.
 - **Graceful In-Memory Fallback**: If `MONGODB_URI` is not initialized during prototype/sandboxed runs, the application auto-switches to an advanced, state-safe local server instance. This makes it instantly bootable and testable anywhere.
+
+### 3. Stability & Container Optimization (Cloud Run Ready)
+To ensure reliable server startup during deployment rollout and cold starts:
+- **Lazy Initializations**: Heavy clients (such as the Gemini `GoogleGenAI` SDK) are initialized lazily on-demand. This prevents application crashes if environment variables (like `GEMINI_API_KEY`) are missing or misconfigured during build phases.
+- **Asynchronous Seeding**: Database seeding is run as a non-blocking background task. This allows the Express server listener to bind to port 3000 instantly, ensuring that container health checks pass without network timeout delays from remote database handshakes.
+
+---
+
+## 🔥 Newly Appended Features
+
+### ⚔️ GOAT Battle Arena & XP Wagers
+Fans can pitch tonight's active players against supreme historical benchmarks of legendary holiday and monthly milestones (e.g., LeBron James' MLS Day peak, Nikola Jokic's Thanksgiving averages).
+- **Matchup Wagers**: Select an active player, pick a historical legend, choose a stat category (Points, Rebounds, Assists, Steals, Blocks), and stake a wager of XP.
+- **Game Night Simulation**: Simulates the active games, resolves all draft entries, calculates actual performance vs. the historical landmarks, and awards/deducts XP. High-end automated commentary is then generated and broadcasted to the Fan Chat Room.
+
+### 🛒 XP Power-Up Shop
+Turn accumulated XP into tactical game boosters before triggering simulations:
+- **GOAT Nightly Insurance (-250 XP)**: Saves failed lock wagers or bets! Acts as a shield that refunds the original bet amount and matches a partial score payout when expectations are missed.
+- **Draft Benchmark Offset (-150 XP)**: Adds a passive `+2` offset to points scored on tonight's tracking results, improving the chance of winning matchup battles.
+
+### ✨ Novel Stats Engine
+A dynamic evaluation layer that runs client and server side to parse raw box score performance attributes and tag players with ESPN-style achievement badges:
+- **Triple Threat MVP**: Given to players averaging $\ge 25$ PTS, $\ge 6$ REB, and $\ge 6$ AST.
+- **Court General**: Given to defensive minded playmakers averaging $\ge 8$ AST and $\ge 1.2$ STL.
+- **Lockdown Guardian**: Highlighted for front-line defenders averaging $\ge 1.3$ STL and $\ge 0.8$ BLK.
+- **Deadly Sniper**: Given to players with excellent outside accuracy ($\ge 40\%$ 3P% or high baseline efficiency).
+- **Clutch Thief**: Earned for high disruption rates ($\ge 2.0$ STL or $\ge 1.0$ BLK).
+- **Paint Dominator**: Awarded to physical interior forces logging $\ge 20$ PTS and $\ge 10$ REB.
 
 ---
 
@@ -29,27 +59,22 @@ The backend uses **Mongoose/MongoDB Native Client** with automatic, multi-tier s
 
 | Method | Route | Description |
 | :--- | :--- | :--- |
-| **GET** | `/api/players` | Retrieves the list of active tracking players and metrics. |
+| **GET** | `/api/players` | Retrieves the list of active tracking players and metrics with dynamically generated achievement badges. |
 | **POST** | `/api/upload-csv` | Overwrites the roster database with custom statistical records (Cole's CSV). |
 | **GET** | `/api/games` | Fetches active NBA game events/matchups. |
+| **POST** | `/api/games/simulate`| Triggers Express backend simulation engine resolving matchups, calculating bets, and publishing commentary. |
 | **POST** | `/api/picks` | Submits a user's Nightly GOAT selection. Updates consensus metrics. |
 | **GET** | `/api/picks` | Fetches all submitted picks. |
+| **GET** | `/api/historical-legends`| Returns historical milestones (holiday / peak games) for matchup wagers. |
+| **GET** | `/api/bets` | Returns pending/settled XP matchup bets for a specific user. |
+| **POST** | `/api/bets/submit` | Logs a pending wager against a historical marker (deducting the wager amount). |
+| **GET** | `/api/xp-shop/purchases`| Fetches owned booster purchases. |
+| **POST** | `/api/xp-shop/purchase`| Spends earned user XP on active power-ups (e.g. Insurance). |
 | **POST** | `/api/trivia/mine` | Triggers **Gemini 3.5 Flash** to analyze roster stats and generate 3 fact-based trivia challenges. |
 | **GET** | `/api/trivia` | Grabs the current queue of active trivia. |
 | **POST** | `/api/trivia/answer`| Validates trivia options and rewards users with XP on success. |
 | **GET** | `/api/leaderboard`| Lists global fan standings scored by XP. |
-| **GET / POST** | `/api/chats` | Live Fan Zone message board enabling conversational discussion and video highlight URLs. |
-
----
-
-## 📱 Mobile App UI Layout Tabs
-
-Designed with standard, responsive DraftKings styling elements (dark backdrop, vibrant neon details, custom font weights):
-1. **Draft Canvas**: Choose your Nightly GOAT from standard/advanced metrics and observe live consensus bars.
-2. **Lobby (Standings)**: Watch real-time vote metrics scale as more users submit picks and see high-scorers climb the leaderboard.
-3. **Trivia Zone**: Trigger the AI Quizmaster. Answer fact-based trivia questions with instant visual correctness overlays and analyst summaries.
-4. **Fan Zone (Chat/Video)**: Engage with other fans, post messages, and share/preview NBA highlight reel video links directly in the custom feed.
-5. **CSV Lab**: Directly upload or paste CSV outputs from your desktop directories to update the database state instantly.
+| **GET / POST** | `/api/chats` | Live Fan Zone message board enabling conversational discussion, video highlight URLs, and automated commentary alerts. |
 
 ---
 
