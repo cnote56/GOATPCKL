@@ -1,6 +1,6 @@
 {
   "name": "GOATPCKL",
-  "description": "The ultimate platform for nightly NBA player tracking, trivia challenges, fan interactions, and real-time athletic analysis.",
+  "description": "The ultimate platform for nightly NBA player tracking, trivia, and the new Live-Sync NFL Fantasy Roster Optimizer with Sleeper integration and AI-Powered Mock Draft Simulator.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

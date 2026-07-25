@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { MongoClient, Db } from 'mongodb';
 import { GoogleGenAI, Type } from '@google/genai';
 import { seededTrivia } from './src/triviaData';
+import axios from 'axios';
 
 const isESM = typeof import.meta !== 'undefined' && typeof import.meta.url !== 'undefined';
 const __filename = isESM ? fileURLToPath(import.meta.url) : '';
@@ -30,31 +31,32 @@ function getAiClient(): GoogleGenAI {
   return aiClient;
 }
 
-// Lazy initialization for MongoDB
-let dbClient: MongoClient | null = null;
-let database: Db | null = null;
+// Lazy initialization for MongoDB with race-condition protection
+let dbPromise: Promise<Db | null> | null = null;
 
 async function getDb(): Promise<Db | null> {
-  if (database) return database;
-  
   const uri = process.env.MONGODB_URI;
-  if (!uri) {
-    console.warn('MONGODB_URI not found. Using fallback in-memory database.');
+  if (!uri || uri.trim() === '' || uri === 'null' || uri === 'undefined' || !uri.startsWith('mongodb')) {
+    console.warn('MONGODB_URI is not configured or is invalid. Using fallback in-memory database.');
     return null;
   }
 
-  try {
-    if (!dbClient) {
-      dbClient = new MongoClient(uri);
-      await dbClient.connect();
+  if (dbPromise) return dbPromise;
+
+  dbPromise = (async () => {
+    try {
+      const client = new MongoClient(uri);
+      await client.connect();
       console.log('Connected to MongoDB Atlas');
+      return client.db('goatpckl');
+    } catch (error) {
+      console.error('Failed to connect to MongoDB:', error);
+      dbPromise = null; // reset to allow future retry attempts
+      return null;
     }
-    database = dbClient.db('goatpckl');
-    return database;
-  } catch (error) {
-    console.error('Failed to connect to MongoDB:', error);
-    return null;
-  }
+  })();
+
+  return dbPromise;
 }
 
 // Rich default stats for NBA players & trivia seeding (resembles Cole's real-world data)
@@ -211,11 +213,16 @@ async function startServer() {
 
   // 1. Get All Players / Stats (Mapped dynamically with Novel Achievements tags)
   app.get('/api/players', async (req: any, res: any) => {
-    const db = await getDb();
     let rPlayers: any[] = [];
-    if (db) {
-      rPlayers = await db.collection('players').find({}).toArray();
-    } else {
+    try {
+      const db = await getDb();
+      if (db) {
+        rPlayers = await db.collection('players').find({}).toArray();
+      } else {
+        rPlayers = inMemoryStorage.players;
+      }
+    } catch (dbErr) {
+      console.error('Database query error in /api/players:', dbErr);
       rPlayers = inMemoryStorage.players;
     }
     const mapped = rPlayers.map((p: any) => ({
@@ -263,18 +270,11 @@ async function startServer() {
         if (playerObj.name) parsedPlayers.push(playerObj);
       }
 
-      const db = await getDb();
-      if (db) {
-        const playersCol = db.collection('players');
-        // Clear old list if desired or insert parsed ones
-        await playersCol.deleteMany({});
-        await playersCol.insertMany(parsedPlayers);
-        const allDb = await playersCol.find({}).toArray();
-        res.json({ message: `Successfully loaded ${parsedPlayers.length} players from ${filename}`, players: allDb });
-      } else {
-        inMemoryStorage.players = parsedPlayers;
-        res.json({ message: `Successfully loaded ${parsedPlayers.length} players locally from ${filename}`, players: parsedPlayers });
-      }
+      res.json({
+        message: `Successfully parsed ${parsedPlayers.length} picks/players from ${filename || 'CSV'} for session review. Website database remains protected.`,
+        players: parsedPlayers,
+        isSessionOnly: true
+      });
     } catch (err: any) {
       console.error('CSV Import Error:', err);
       res.status(500).json({ error: 'Failed to process CSV file', details: err.message });
@@ -290,11 +290,17 @@ async function startServer() {
   app.get('/api/bets', async (req: any, res: any) => {
     const { username } = req.query;
     if (!username) return res.status(400).json({ error: 'Missing username' });
-    const db = await getDb();
-    if (db) {
-      const userBets = await db.collection('bets').find({ username }).toArray();
-      res.json(userBets);
-    } else {
+    try {
+      const db = await getDb();
+      if (db) {
+        const userBets = await db.collection('bets').find({ username }).toArray();
+        res.json(userBets);
+      } else {
+        const userBets = (inMemoryStorage.bets || []).filter((b: any) => b.username === username);
+        res.json(userBets);
+      }
+    } catch (dbErr) {
+      console.error('Database query error in /api/bets:', dbErr);
       const userBets = (inMemoryStorage.bets || []).filter((b: any) => b.username === username);
       res.json(userBets);
     }
@@ -597,11 +603,16 @@ async function startServer() {
 
   // 3. Get Active Matchups
   app.get('/api/games', async (req: any, res: any) => {
-    const db = await getDb();
-    if (db) {
-      const dbGames = await db.collection('games').find({}).toArray();
-      res.json(dbGames);
-    } else {
+    try {
+      const db = await getDb();
+      if (db) {
+        const dbGames = await db.collection('games').find({}).toArray();
+        res.json(dbGames);
+      } else {
+        res.json(inMemoryStorage.games);
+      }
+    } catch (dbErr) {
+      console.error('Database query error in /api/games:', dbErr);
       res.json(inMemoryStorage.games);
     }
   });
@@ -759,11 +770,16 @@ async function startServer() {
 
   // 7. Get Trivia Questions (mined or static)
   app.get('/api/trivia', async (req: any, res: any) => {
-    const db = await getDb();
-    if (db) {
-      const trivia = await db.collection('trivia_questions').find({}).toArray();
-      res.json(trivia);
-    } else {
+    try {
+      const db = await getDb();
+      if (db) {
+        const trivia = await db.collection('trivia_questions').find({}).toArray();
+        res.json(trivia);
+      } else {
+        res.json(inMemoryStorage.trivia);
+      }
+    } catch (dbErr) {
+      console.error('Database query error in /api/trivia:', dbErr);
       res.json(inMemoryStorage.trivia);
     }
   });
@@ -773,12 +789,19 @@ async function startServer() {
     const { username } = req.query;
     if (!username) return res.status(400).json({ error: 'Missing username' });
 
-    const db = await getDb();
-    if (db) {
-      const purchases = await db.collection('xp_purchases').find({ username }).toArray();
-      res.json(purchases);
-    } else {
-      // Fallback local memory
+    try {
+      const db = await getDb();
+      if (db) {
+        const purchases = await db.collection('xp_purchases').find({ username }).toArray();
+        res.json(purchases);
+      } else {
+        // Fallback local memory
+        if (!(inMemoryStorage as any).purchases) (inMemoryStorage as any).purchases = [];
+        const userPurchases = (inMemoryStorage as any).purchases.filter((p: any) => p.username === username);
+        res.json(userPurchases);
+      }
+    } catch (dbErr) {
+      console.error('Database query error in /api/xp-shop/purchases:', dbErr);
       if (!(inMemoryStorage as any).purchases) (inMemoryStorage as any).purchases = [];
       const userPurchases = (inMemoryStorage as any).purchases.filter((p: any) => p.username === username);
       res.json(userPurchases);
@@ -911,6 +934,474 @@ async function startServer() {
     res.json({ success: true, chats: inMemoryStorage.chats });
   });
 
+  // --- LIVE-SYNC ROSTER OPTIMIZER & FANTASY FOOTBALL ENGINE ---
+
+  const nflPlayersDb: { [id: string]: { name: string; team: string; position: 'QB' | 'RB' | 'WR' | 'TE' | 'DEF' | 'K'; tier: number; projectedPts: number; opponent: string; matchupRating: 'smash' | 'favorable' | 'neutral' | 'tough' | 'brutal'; achievements: string[] } } = {
+    // QBs
+    '4046': { name: 'Patrick Mahomes', team: 'KC', position: 'QB', tier: 1, projectedPts: 21.5, opponent: 'LV', matchupRating: 'smash', achievements: ['Gunslinger', 'Clutch General'] },
+    '4984': { name: 'Josh Allen', team: 'BUF', position: 'QB', tier: 1, projectedPts: 23.8, opponent: 'MIA', matchupRating: 'favorable', achievements: ['Dual Threat King', 'Redzone Bulldozer'] },
+    '6828': { name: 'Jalen Hurts', team: 'PHI', position: 'QB', tier: 1, projectedPts: 22.1, opponent: 'NYG', matchupRating: 'smash', achievements: ['Tush Push Legend', 'Dual Threat King'] },
+    '4881': { name: 'Lamar Jackson', team: 'BAL', position: 'QB', tier: 1, projectedPts: 24.2, opponent: 'CIN', matchupRating: 'neutral', achievements: ['Speed Demon', 'MVP Playmaker'] },
+    '6151': { name: 'Joe Burrow', team: 'CIN', position: 'QB', tier: 2, projectedPts: 18.5, opponent: 'BAL', matchupRating: 'tough', achievements: ['Pocket Sniper'] },
+    '9758': { name: 'C.J. Stroud', team: 'HOU', position: 'QB', tier: 2, projectedPts: 17.9, opponent: 'IND', matchupRating: 'favorable', achievements: ['Deep Ball Artist'] },
+    '8183': { name: 'Brock Purdy', team: 'SF', position: 'QB', tier: 3, projectedPts: 16.4, opponent: 'SEA', matchupRating: 'neutral', achievements: ['High Efficiency Pilot'] },
+    '1234': { name: 'Caleb Williams', team: 'CHI', position: 'QB', tier: 4, projectedPts: 14.8, opponent: 'DET', matchupRating: 'tough', achievements: ['Breakout Prospect'] },
+
+    // RBs
+    '4018': { name: 'Christian McCaffrey', team: 'SF', position: 'RB', tier: 1, projectedPts: 22.4, opponent: 'SEA', matchupRating: 'smash', achievements: ['Hero-RB Keystone', 'Dual Threat God'] },
+    '8151': { name: 'Breece Hall', team: 'NYJ', position: 'RB', tier: 1, projectedPts: 19.8, opponent: 'NE', matchupRating: 'favorable', achievements: ['Breakaway Weapon', 'Volume King'] },
+    '9509': { name: 'Bijan Robinson', team: 'ATL', position: 'RB', tier: 1, projectedPts: 18.9, opponent: 'CAR', matchupRating: 'smash', achievements: ['Tier 1 Anchor', 'Ankle Breaker'] },
+    '9229': { name: 'Jahmyr Gibbs', team: 'DET', position: 'RB', tier: 1, projectedPts: 17.5, opponent: 'CHI', matchupRating: 'neutral', achievements: ['Lightning Bolt', 'Elusive Specialist'] },
+    '4866': { name: 'Saquon Barkley', team: 'PHI', position: 'RB', tier: 1, projectedPts: 20.1, opponent: 'NYG', matchupRating: 'smash', achievements: ['Workhorse Giant', 'Goal-line Monster'] },
+    '6813': { name: 'Jonathan Taylor', team: 'IND', position: 'RB', tier: 2, projectedPts: 16.2, opponent: 'HOU', matchupRating: 'neutral', achievements: ['Pure Runner', 'Volume King'] },
+    '8138': { name: 'Kyren Williams', team: 'LAR', position: 'RB', tier: 2, projectedPts: 15.8, opponent: 'ARI', matchupRating: 'favorable', achievements: ['Goal-line Monster'] },
+    '9226': { name: 'Devon Achane', team: 'MIA', position: 'RB', tier: 2, projectedPts: 16.5, opponent: 'BUF', matchupRating: 'neutral', achievements: ['Home-Run Hitter', 'Speed Demon'] },
+    '4663': { name: 'Derrick Henry', team: 'BAL', position: 'RB', tier: 2, projectedPts: 18.2, opponent: 'CIN', matchupRating: 'favorable', achievements: ['The King', 'Stiff-Arm King'] },
+    '8150': { name: 'James Cook', team: 'BUF', position: 'RB', tier: 3, projectedPts: 14.1, opponent: 'MIA', matchupRating: 'neutral', achievements: ['Zone Weapon'] },
+    '5022': { name: 'Rachaad White', team: 'TB', position: 'RB', tier: 3, projectedPts: 12.8, opponent: 'ATL', matchupRating: 'neutral', achievements: ['PPR Specialty'] },
+    '6845': { name: 'D\'Andre Swift', team: 'CHI', position: 'RB', tier: 4, projectedPts: 11.5, opponent: 'DET', matchupRating: 'tough', achievements: ['Dynamic Flex'] },
+    '8129': { name: 'Isiah Pacheco', team: 'KC', position: 'RB', tier: 3, projectedPts: 14.5, opponent: 'LV', matchupRating: 'smash', achievements: ['Angry Runner'] },
+    '8146': { name: 'Zamir White', team: 'LV', position: 'RB', tier: 5, projectedPts: 9.2, opponent: 'KC', matchupRating: 'brutal', achievements: ['Breakout Candidate'] },
+
+    // WRs
+    '6794': { name: 'Justin Jefferson', team: 'MIN', position: 'WR', tier: 1, projectedPts: 21.8, opponent: 'GB', matchupRating: 'neutral', achievements: ['Gridiron Artist', 'Uncluttable'] },
+    '6824': { name: 'CeeDee Lamb', team: 'DAL', position: 'WR', tier: 1, projectedPts: 22.5, opponent: 'WAS', matchupRating: 'smash', achievements: ['Target Monster', 'YAC God'] },
+    '3198': { name: 'Tyreek Hill', team: 'MIA', position: 'WR', tier: 1, projectedPts: 20.9, opponent: 'BUF', matchupRating: 'neutral', achievements: ['Cheetah Speed', 'Deep Threat God'] },
+    '7547': { name: 'Amon-Ra St. Brown', team: 'DET', position: 'WR', tier: 1, projectedPts: 19.5, opponent: 'CHI', matchupRating: 'favorable', achievements: ['The Sun God', 'First-Down Machine'] },
+    '7564': { name: 'Ja\'Marr Chase', team: 'CIN', position: 'WR', tier: 1, projectedPts: 20.2, opponent: 'BAL', matchupRating: 'favorable', achievements: ['Explosive Weapon', 'YAC God'] },
+    '5846': { name: 'A.J. Brown', team: 'PHI', position: 'WR', tier: 2, projectedPts: 17.8, opponent: 'NYG', matchupRating: 'smash', achievements: ['Physical Phenom'] },
+    '10216': { name: 'Puka Nacua', team: 'LAR', position: 'WR', tier: 2, projectedPts: 17.2, opponent: 'ARI', matchupRating: 'favorable', achievements: ['Record Breaker'] },
+    '8155': { name: 'Garrett Wilson', team: 'NYJ', position: 'WR', tier: 2, projectedPts: 16.9, opponent: 'NE', matchupRating: 'neutral', achievements: ['Route Technician'] },
+    '6820': { name: 'Brandon Aiyuk', team: 'SF', position: 'WR', tier: 2, projectedPts: 15.4, opponent: 'SEA', matchupRating: 'neutral', achievements: ['YAC Specialist'] },
+    '7525': { name: 'Jaylen Waddle', team: 'MIA', position: 'WR', tier: 3, projectedPts: 14.2, opponent: 'BUF', matchupRating: 'neutral', achievements: ['Cheetah Jr'] },
+    '4973': { name: 'DJ Moore', team: 'CHI', position: 'WR', tier: 3, projectedPts: 13.9, opponent: 'DET', matchupRating: 'tough', achievements: ['Reliable Target'] },
+    '8153': { name: 'Chris Olave', team: 'NO', position: 'WR', tier: 3, projectedPts: 14.5, opponent: 'CAR', matchupRating: 'favorable', achievements: ['Smooth Route Runner'] },
+    '9221': { name: 'Rashee Rice', team: 'KC', position: 'WR', tier: 3, projectedPts: 15.1, opponent: 'LV', matchupRating: 'smash', achievements: ['YAC Specialist'] },
+    '10222': { name: 'Tank Dell', team: 'HOU', position: 'WR', tier: 4, projectedPts: 11.2, opponent: 'IND', matchupRating: 'neutral', achievements: ['Pocket Rocket'] },
+    '11565': { name: 'Malik Nabers', team: 'NYG', position: 'WR', tier: 2, projectedPts: 16.8, opponent: 'PHI', matchupRating: 'tough', achievements: ['Highlight Reel', 'Breakout Candidate'] },
+
+    // TEs
+    '1466': { name: 'Travis Kelce', team: 'KC', position: 'TE', tier: 1, projectedPts: 14.8, opponent: 'LV', matchupRating: 'smash', achievements: ['Gold Standard', 'Redzone General'] },
+    '9756': { name: 'Sam LaPorta', team: 'DET', position: 'TE', tier: 1, projectedPts: 13.9, opponent: 'CHI', matchupRating: 'neutral', achievements: ['Elite Target', 'Safety Valve'] },
+    '8150_te': { name: 'Trey McBride', team: 'ARI', position: 'TE', tier: 1, projectedPts: 14.2, opponent: 'LAR', matchupRating: 'favorable', achievements: ['Volume Monster', 'Target Magnet'] },
+    '4950': { name: 'Mark Andrews', team: 'BAL', position: 'TE', tier: 2, projectedPts: 11.8, opponent: 'CIN', matchupRating: 'neutral', achievements: ['Redzone Threat'] },
+    '4211': { name: 'George Kittle', team: 'SF', position: 'TE', tier: 1, projectedPts: 14.5, opponent: 'SEA', matchupRating: 'neutral', achievements: ['YAC Beast', 'Run Block Giant'] },
+    '7561': { name: 'Kyle Pitts', team: 'ATL', position: 'TE', tier: 3, projectedPts: 9.8, opponent: 'CAR', matchupRating: 'favorable', achievements: ['Athletic Specimen'] },
+    '6843': { name: 'Cole Kmet', team: 'CHI', position: 'TE', tier: 4, projectedPts: 8.5, opponent: 'DET', matchupRating: 'tough', achievements: ['Goal-line Option'] },
+
+    // Ks
+    '11435': { name: 'Brandon Aubrey', team: 'DAL', position: 'K', tier: 1, projectedPts: 10.5, opponent: 'WAS', matchupRating: 'smash', achievements: ['Leg of Gold', 'Automatic'] },
+    '1264': { name: 'Justin Tucker', team: 'BAL', position: 'K', tier: 1, projectedPts: 9.2, opponent: 'CIN', matchupRating: 'neutral', achievements: ['Historic Great', 'Clutch Leg'] },
+    '4227': { name: 'Harrison Butker', team: 'KC', position: 'K', tier: 2, projectedPts: 8.9, opponent: 'LV', matchupRating: 'smash', achievements: ['Superbowl Champ'] },
+    '3451': { name: 'Ka\'imi Fairbairn', team: 'HOU', position: 'K', tier: 2, projectedPts: 8.5, opponent: 'IND', matchupRating: 'favorable', achievements: ['Dome Kicker'] },
+
+    // DEFs
+    'SF': { name: 'San Francisco 49ers', team: 'SF', position: 'DEF', tier: 1, projectedPts: 8.5, opponent: 'SEA', matchupRating: 'neutral', achievements: ['Pass Rush Heavy', 'Turnover Artists'] },
+    'BAL': { name: 'Baltimore Ravens', team: 'BAL', position: 'DEF', tier: 1, projectedPts: 9.2, opponent: 'CIN', matchupRating: 'neutral', achievements: ['Lockdown Secondary', 'Blitz Masters'] },
+    'NYJ': { name: 'New York Jets', team: 'NYJ', position: 'DEF', tier: 1, projectedPts: 8.8, opponent: 'NE', matchupRating: 'smash', achievements: ['Shutout Special'] },
+    'DAL': { name: 'Dallas Cowboys', team: 'DAL', position: 'DEF', tier: 2, projectedPts: 7.8, opponent: 'WAS', matchupRating: 'favorable', achievements: ['Sack Monsters'] },
+    'CLE': { name: 'Cleveland Browns', team: 'CLE', position: 'DEF', tier: 2, projectedPts: 7.5, opponent: 'PIT', matchupRating: 'neutral', achievements: ['Home Field Lockdown'] },
+    'KC': { name: 'Kansas City Chiefs', team: 'KC', position: 'DEF', tier: 2, projectedPts: 8.2, opponent: 'LV', matchupRating: 'smash', achievements: ['Championship Caliber'] }
+  };
+
+  const genericPlayerFallback = (id: string, index: number) => {
+    const positions: Array<'QB' | 'RB' | 'WR' | 'TE' | 'K' | 'DEF'> = ['WR', 'RB', 'TE', 'WR', 'RB', 'QB'];
+    const pos = positions[index % positions.length];
+    const names = {
+      QB: ['Tua Tagovailoa', 'Kyler Murray', 'Kirk Cousins', 'Jordan Love', 'Jared Goff', 'Trevor Lawrence'],
+      RB: ['Travis Etienne', 'Kenneth Walker', 'Rhamondre Stevenson', 'Alvin Kamara', 'Joe Mixon', 'Aaron Jones'],
+      WR: ['Davante Adams', 'Deebo Samuel', 'Mike Evans', 'Keenan Allen', 'Amari Cooper', 'Stefon Diggs', 'Nico Collins'],
+      TE: ['Dallas Goedert', 'David Njoku', 'Evan Engram', 'Pat Freiermuth', 'Jake Ferguson'],
+      K: ['Evan McPherson', 'Jake Elliott', 'Dustin Hopkins', 'Cameron Dicker'],
+      DEF: ['Buffalo Bills', 'Philadelphia Eagles', 'Pittsburgh Steelers', 'Miami Dolphins']
+    };
+    const list = names[pos] || ['Unknown Athlete'];
+    const name = list[Math.abs(parseInt(id) || index) % list.length];
+    const teams = ['BUF', 'KC', 'SF', 'MIA', 'DET', 'DAL', 'BAL', 'PHI', 'GB', 'LAR'];
+    const team = teams[Math.abs(parseInt(id) || index) % teams.length];
+    const tier = (Math.abs(parseInt(id) || index) % 4) + 2; // Tier 2-5
+    const bases = { QB: 16.5, RB: 12.0, WR: 11.5, TE: 8.5, K: 7.5, DEF: 6.5 };
+    const base = bases[pos] || 10.0;
+    const ratingChoices: Array<'smash' | 'favorable' | 'neutral' | 'tough' | 'brutal'> = ['neutral', 'favorable', 'tough', 'smash', 'brutal'];
+    const rating = ratingChoices[Math.abs(parseInt(id) || index) % ratingChoices.length];
+
+    return {
+      id,
+      name,
+      team,
+      position: pos,
+      tier,
+      projectedPts: Math.round((base + (5 - tier) * 1.5 + (Math.random() * 2)) * 10) / 10,
+      opponent: teams[(Math.abs(parseInt(id) || index) + 3) % teams.length],
+      matchupRating: rating,
+      achievements: [`Tier ${tier} Roster Asset`, `${pos} Option`]
+    };
+  };
+
+  const analyzeRoster = (players: any[]) => {
+    const qbs = players.filter(p => p.position === 'QB');
+    const rbs = players.filter(p => p.position === 'RB');
+    const wrs = players.filter(p => p.position === 'WR');
+    const tes = players.filter(p => p.position === 'TE');
+
+    const tier1RBs = rbs.filter(p => p.tier === 1);
+    const tier2RBs = rbs.filter(p => p.tier === 2);
+    const tier1WRs = wrs.filter(p => p.tier === 1);
+    const tier2WRs = wrs.filter(p => p.tier === 2);
+
+    let strategy = 'Balanced Build';
+    const alerts: string[] = [];
+
+    // Strategy Detection
+    if (tier1RBs.length >= 2) {
+      strategy = 'Robust-RB Build';
+    } else if (tier1RBs.length === 1 && tier1WRs.length >= 2) {
+      strategy = 'Hero-RB Build';
+    } else if (tier1RBs.length === 0 && tier1WRs.length >= 2) {
+      strategy = 'Zero-RB Build';
+    } else if (tier1WRs.length >= 3) {
+      strategy = 'Zero-RB Build / WR-Heavy';
+    }
+
+    // Waiver / Breakout Alerts based on strategy and depth
+    if (strategy === 'Zero-RB Build' && rbs.length < 4) {
+      alerts.push('🚨 Waiver Alert: RB Depth is dangerously thin! Scan waiver wire for Tier 4 breakout candidates like Zamir White immediately.');
+    } else if (strategy === 'Robust-RB Build' && wrs.length < 4) {
+      alerts.push('🚨 Waiver Alert: WR depth is low due to heavy RB investment. Pick up Tier 4 high-upside WR prospects.');
+    }
+
+    // Trade Recommendations
+    if (tier1WRs.length >= 3 && tier1RBs.length === 0) {
+      alerts.push(`💡 Trade Target: Your WR room is stacked with Tier 1 talent (${tier1WRs.map(w => w.name).join(', ')}). Recommend trading one of them for an elite Tier 1 RB to achieve premium structural balance.`);
+    } else if (tier1RBs.length >= 3 && tier1WRs.length === 0) {
+      alerts.push(`💡 Trade Target: You have premium RB dominance (${tier1RBs.map(r => r.name).join(', ')}). Leverage this depth to acquire a Tier 1 WR (like CeeDee Lamb or Justin Jefferson).`);
+    }
+
+    // General positional recommendations
+    if (qbs.length === 0) {
+      alerts.push('⚠️ Missing position: Roster contains no starting QB. Please add a QB from waivers.');
+    }
+    if (tes.length === 0) {
+      alerts.push('⚠️ Missing position: Roster contains no active TE. Pick up a TE option.');
+    }
+
+    // Look for breakouts (Tier 4 or 5 players with smash matchups)
+    const sleepers = players.filter(p => (p.tier >= 4) && p.matchupRating === 'smash');
+    sleepers.forEach(s => {
+      alerts.push(`🔥 Sleeper Alert: ${s.name} (${s.position}) has a Tier-5 Smash Matchup against ${s.opponent} this week. Consider moving them into your Flex spot!`);
+    });
+
+    return {
+      strategy,
+      overallPower: Math.min(99, Math.round(72 + (players.filter(p => p.tier <= 2).length * 4) + (players.length * 0.4))),
+      alerts
+    };
+  };
+
+  const mockDemoRosters = [
+    {
+      rosterId: 1,
+      username: "Cole's Superstars",
+      wins: 10,
+      losses: 4,
+      starters: [
+        { id: '4984', name: 'Josh Allen', team: 'BUF', position: 'QB', tier: 1, projectedPts: 23.8, opponent: 'MIA', matchupRating: 'favorable', achievements: ['Dual Threat King', 'Redzone Bulldozer'] },
+        { id: '4018', name: 'Christian McCaffrey', team: 'SF', position: 'RB', tier: 1, projectedPts: 22.4, opponent: 'SEA', matchupRating: 'smash', achievements: ['Hero-RB Keystone', 'Dual Threat God'] },
+        { id: '8151', name: 'Breece Hall', team: 'NYJ', position: 'RB', tier: 1, projectedPts: 19.8, opponent: 'NE', matchupRating: 'favorable', achievements: ['Breakaway Weapon', 'Volume King'] },
+        { id: '6794', name: 'Justin Jefferson', team: 'MIN', position: 'WR', tier: 1, projectedPts: 21.8, opponent: 'GB', matchupRating: 'neutral', achievements: ['Gridiron Artist', 'Uncluttable'] },
+        { id: '10216', name: 'Puka Nacua', team: 'LAR', position: 'WR', tier: 2, projectedPts: 17.2, opponent: 'ARI', matchupRating: 'favorable', achievements: ['Record Breaker'] },
+        { id: '4211', name: 'George Kittle', team: 'SF', position: 'TE', tier: 1, projectedPts: 14.5, opponent: 'SEA', matchupRating: 'neutral', achievements: ['YAC Beast', 'Run Block Giant'] },
+        { id: '8129', name: 'Isiah Pacheco', team: 'KC', position: 'RB', tier: 3, projectedPts: 14.5, opponent: 'LV', matchupRating: 'smash', achievements: ['Angry Runner'] },
+        { id: 'NYJ', name: 'New York Jets', team: 'NYJ', position: 'DEF', tier: 1, projectedPts: 8.8, opponent: 'NE', matchupRating: 'smash', achievements: ['Shutout Special'] },
+        { id: '11435', name: 'Brandon Aubrey', team: 'DAL', position: 'K', tier: 1, projectedPts: 10.5, opponent: 'WAS', matchupRating: 'smash', achievements: ['Leg of Gold', 'Automatic'] }
+      ],
+      bench: [
+        { id: '8183', name: 'Brock Purdy', team: 'SF', position: 'QB', tier: 3, projectedPts: 16.4, opponent: 'SEA', matchupRating: 'neutral', achievements: ['High Efficiency Pilot'] },
+        { id: '9226', name: 'Devon Achane', team: 'MIA', position: 'RB', tier: 2, projectedPts: 16.5, opponent: 'BUF', matchupRating: 'neutral', achievements: ['Speed Demon', 'Home-Run Hitter'] },
+        { id: '9221', name: 'Rashee Rice', team: 'KC', position: 'WR', tier: 3, projectedPts: 15.1, opponent: 'LV', matchupRating: 'smash', achievements: ['YAC Specialist'] },
+        { id: '11565', name: 'Malik Nabers', team: 'NYG', position: 'WR', tier: 2, projectedPts: 16.8, opponent: 'PHI', matchupRating: 'tough', achievements: ['Highlight Reel', 'Breakout Candidate'] },
+        { id: '7561', name: 'Kyle Pitts', team: 'ATL', position: 'TE', tier: 3, projectedPts: 9.8, opponent: 'CAR', matchupRating: 'favorable', achievements: ['Athletic Specimen'] }
+      ]
+    },
+    {
+      rosterId: 2,
+      username: "Splash Champion",
+      wins: 8,
+      losses: 6,
+      starters: [
+        { id: '4046', name: 'Patrick Mahomes', team: 'KC', position: 'QB', tier: 1, projectedPts: 21.5, opponent: 'LV', matchupRating: 'smash', achievements: ['Gunslinger', 'Clutch General'] },
+        { id: '4866', name: 'Saquon Barkley', team: 'PHI', position: 'RB', tier: 1, projectedPts: 20.1, opponent: 'NYG', matchupRating: 'smash', achievements: ['Workhorse Giant', 'Goal-line Monster'] },
+        { id: '6813', name: 'Jonathan Taylor', team: 'IND', position: 'RB', tier: 2, projectedPts: 16.2, opponent: 'HOU', matchupRating: 'neutral', achievements: ['Pure Runner', 'Volume King'] },
+        { id: '6824', name: 'CeeDee Lamb', team: 'DAL', position: 'WR', tier: 1, projectedPts: 22.5, opponent: 'WAS', matchupRating: 'smash', achievements: ['Target Monster', 'YAC God'] },
+        { id: '7547', name: 'Amon-Ra St. Brown', team: 'DET', position: 'WR', tier: 1, projectedPts: 19.5, opponent: 'CHI', matchupRating: 'favorable', achievements: ['The Sun God', 'First-Down Machine'] },
+        { id: '9756', name: 'Sam LaPorta', team: 'DET', position: 'TE', tier: 1, projectedPts: 13.9, opponent: 'CHI', matchupRating: 'neutral', achievements: ['Elite Target', 'Safety Valve'] },
+        { id: '8153', name: 'Chris Olave', team: 'NO', position: 'WR', tier: 3, projectedPts: 14.5, opponent: 'CAR', matchupRating: 'favorable', achievements: ['Smooth Route Runner'] },
+        { id: 'SF', name: 'San Francisco 49ers', team: 'SF', position: 'DEF', tier: 1, projectedPts: 8.5, opponent: 'SEA', matchupRating: 'neutral', achievements: ['Pass Rush Heavy'] },
+        { id: '4227', name: 'Harrison Butker', team: 'KC', position: 'K', tier: 2, projectedPts: 8.9, opponent: 'LV', matchupRating: 'smash', achievements: ['Superbowl Champ'] }
+      ],
+      bench: [
+        { id: '9758', name: 'C.J. Stroud', team: 'HOU', position: 'QB', tier: 2, projectedPts: 17.9, opponent: 'IND', matchupRating: 'favorable', achievements: ['Deep Ball Artist'] },
+        { id: '8150', name: 'James Cook', team: 'BUF', position: 'RB', tier: 3, projectedPts: 14.1, opponent: 'MIA', matchupRating: 'neutral', achievements: ['Zone Weapon'] },
+        { id: '4973', name: 'DJ Moore', team: 'CHI', position: 'WR', tier: 3, projectedPts: 13.9, opponent: 'DET', matchupRating: 'tough', achievements: ['Reliable Target'] },
+        { id: '4950', name: 'Mark Andrews', team: 'BAL', position: 'TE', tier: 2, projectedPts: 11.8, opponent: 'CIN', matchupRating: 'neutral', achievements: ['Redzone Threat'] }
+      ]
+    },
+    {
+      rosterId: 3,
+      username: "Draft King",
+      wins: 6,
+      losses: 8,
+      starters: [
+        { id: '4881', name: 'Lamar Jackson', team: 'BAL', position: 'QB', tier: 1, projectedPts: 24.2, opponent: 'CIN', matchupRating: 'neutral', achievements: ['Speed Demon', 'MVP Playmaker'] },
+        { id: '8138', name: 'Kyren Williams', team: 'LAR', position: 'RB', tier: 2, projectedPts: 15.8, opponent: 'ARI', matchupRating: 'favorable', achievements: ['Goal-line Monster'] },
+        { id: '4663', name: 'Derrick Henry', team: 'BAL', position: 'RB', tier: 2, projectedPts: 18.2, opponent: 'CIN', matchupRating: 'favorable', achievements: ['The King'] },
+        { id: '3198', name: 'Tyreek Hill', team: 'MIA', position: 'WR', tier: 1, projectedPts: 20.9, opponent: 'BUF', matchupRating: 'neutral', achievements: ['Cheetah Speed', 'Deep Threat God'] },
+        { id: '7564', name: 'Ja\'Marr Chase', team: 'CIN', position: 'WR', tier: 1, projectedPts: 20.2, opponent: 'BAL', matchupRating: 'favorable', achievements: ['Explosive Weapon', 'YAC God'] },
+        { id: '8150_te', name: 'Trey McBride', team: 'ARI', position: 'TE', tier: 1, projectedPts: 14.2, opponent: 'LAR', matchupRating: 'favorable', achievements: ['Volume Monster', 'Target Magnet'] },
+        { id: '7525', name: 'Jaylen Waddle', team: 'MIA', position: 'WR', tier: 3, projectedPts: 14.2, opponent: 'BUF', matchupRating: 'neutral', achievements: ['Cheetah Jr'] },
+        { id: 'BAL', name: 'Baltimore Ravens', team: 'BAL', position: 'DEF', tier: 1, projectedPts: 9.2, opponent: 'CIN', matchupRating: 'neutral', achievements: ['Lockdown Secondary'] },
+        { id: '1264', name: 'Justin Tucker', team: 'BAL', position: 'K', tier: 1, projectedPts: 9.2, opponent: 'CIN', matchupRating: 'neutral', achievements: ['Historic Great'] }
+      ],
+      bench: [
+        { id: '1234', name: 'Caleb Williams', team: 'CHI', position: 'QB', tier: 4, projectedPts: 14.8, opponent: 'DET', matchupRating: 'tough', achievements: ['Breakout Prospect'] },
+        { id: '5022', name: 'Rachaad White', team: 'TB', position: 'RB', tier: 3, projectedPts: 12.8, opponent: 'ATL', matchupRating: 'neutral', achievements: ['PPR Specialty'] },
+        { id: '10222', name: 'Tank Dell', team: 'HOU', position: 'WR', tier: 4, projectedPts: 11.2, opponent: 'IND', matchupRating: 'neutral', achievements: ['Pocket Rocket'] },
+        { id: '6843', name: 'Cole Kmet', team: 'CHI', position: 'TE', tier: 4, projectedPts: 8.5, opponent: 'DET', matchupRating: 'tough', achievements: ['Goal-line Option'] }
+      ]
+    }
+  ];
+
+  // In-Memory cache for Sleeper API requests
+  const sleeperCache: { [key: string]: { data: any; timestamp: number } } = {};
+  const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache
+
+  app.get('/api/fantasy/sync', async (req: any, res: any) => {
+    const { leagueId } = req.query;
+    if (!leagueId || leagueId.trim() === '') {
+      return res.status(400).json({ error: 'Please provide a valid League ID parameter' });
+    }
+
+    const lid = leagueId.trim();
+
+    // 1. Serve Mock Demo rosters on 'demo' or '999999'
+    if (lid === 'demo' || lid === '999999') {
+      const compiledRosters = mockDemoRosters.map(team => {
+        const allPlayers = [...team.starters, ...team.bench];
+        const analysis = analyzeRoster(allPlayers);
+        return {
+          ...team,
+          analysis
+        };
+      });
+      return res.json({
+        success: true,
+        leagueName: 'GOATPCKL Champions League (Demo)',
+        rosters: compiledRosters
+      });
+    }
+
+    // 2. Query Sleeper API
+    // Ensure league ID has only digits
+    if (!/^\d+$/.test(lid)) {
+      return res.status(400).json({ error: 'League ID must contain numbers only' });
+    }
+
+    try {
+      const cacheKey = `sleeper_league_${lid}`;
+      const now = Date.now();
+      if (sleeperCache[cacheKey] && (now - sleeperCache[cacheKey].timestamp) < CACHE_TTL_MS) {
+        return res.json(sleeperCache[cacheKey].data);
+      }
+
+      // Fetch Sleeper league rosters
+      const rostersRes = await axios.get(`https://api.sleeper.app/v1/league/${lid}/rosters`, { timeout: 8000 });
+      const rosters = rostersRes.data;
+
+      if (!Array.isArray(rosters) || rosters.length === 0) {
+        return res.status(404).json({ error: 'No rosters found for this league ID. Double check the Sleeper league status.' });
+      }
+
+      // Fetch Sleeper league details to get League Name
+      let leagueName = `Sleeper League #${lid}`;
+      try {
+        const detailsRes = await axios.get(`https://api.sleeper.app/v1/league/${lid}`, { timeout: 5000 });
+        if (detailsRes.data && detailsRes.data.name) {
+          leagueName = detailsRes.data.name;
+        }
+      } catch (e) {
+        console.warn('Could not fetch league details:', e);
+      }
+
+      // Fetch Sleeper user mapping to translate owners to user names
+      let usersMap: { [ownerId: string]: string } = {};
+      try {
+        const usersRes = await axios.get(`https://api.sleeper.app/v1/league/${lid}/users`, { timeout: 5000 });
+        if (Array.isArray(usersRes.data)) {
+          usersRes.data.forEach((u: any) => {
+            usersMap[u.user_id] = u.display_name || u.metadata?.team_name || 'Anonymous User';
+          });
+        }
+      } catch (e) {
+        console.warn('Could not fetch league user map:', e);
+      }
+
+      // Process and translate rosters
+      const processedRosters = rosters.map((r: any, rIdx: number) => {
+        const username = usersMap[r.owner_id] || `Team Owner #${rIdx + 1}`;
+        const rawPlayers = r.players || [];
+        const rawStarters = r.starters || [];
+
+        // Map and lookup each player
+        const mappedPlayers = rawPlayers.map((pid: string, idx: number) => {
+          if (nflPlayersDb[pid]) {
+            return { id: pid, ...nflPlayersDb[pid] };
+          } else {
+            return genericPlayerFallback(pid, idx);
+          }
+        });
+
+        // Split into starters and bench
+        const startersSet = new Set(rawStarters);
+        const starters = mappedPlayers.filter((p: any) => startersSet.has(p.id));
+        const bench = mappedPlayers.filter((p: any) => !startersSet.has(p.id));
+
+        const analysis = analyzeRoster(mappedPlayers);
+
+        return {
+          rosterId: r.roster_id,
+          username,
+          wins: r.settings?.wins || 0,
+          losses: r.settings?.losses || 0,
+          starters,
+          bench,
+          analysis
+        };
+      });
+
+      const responsePayload = {
+        success: true,
+        leagueName,
+        rosters: processedRosters
+      };
+
+      // Set cache
+      sleeperCache[cacheKey] = {
+        data: responsePayload,
+        timestamp: now
+      };
+
+      res.json(responsePayload);
+    } catch (err: any) {
+      console.error('Sleeper Sync error:', err.message);
+      res.status(500).json({
+        error: 'Sleeper API Handshake failed.',
+        details: err.message,
+        tip: 'Ensure that your Sleeper league ID is correct and active. You can also sync using "demo" for instant testing.'
+      });
+    }
+  });
+
+  // AI-powered Mock Draft suggestion endpoint using Gemini API
+  app.post('/api/draft/suggest', express.json(), async (req: any, res: any) => {
+    try {
+      const { userRoster, availablePlayers, userStrategy, currentRound, currentPick, totalTeams } = req.body;
+
+      if (!userStrategy) {
+        return res.status(400).json({ error: 'Missing strategy' });
+      }
+
+      const ai = getAiClient();
+
+      // Formulate a clean, compact list of available players
+      const availableListText = (availablePlayers || [])
+        .slice(0, 15)
+        .map((p: any) => `- ${p.name} (${p.position}, ${p.team}) - Tier ${p.tier}, ADP: ${p.adp}, Proj: ${p.projectedPts} pts`)
+        .join('\n');
+
+      // Formulate user roster text
+      const rosterText = (userRoster || []).length > 0
+        ? (userRoster || []).map((p: any) => `- ${p.name} (${p.position}, Rd ${p.draftRound || '?'})`).join('\n')
+        : 'None yet (first pick)';
+
+      const prompt = `You are an elite, high-integrity Fantasy Football Draft consultant.
+The user is participating in a ${totalTeams || 10}-team snake draft.
+Current Round: ${currentRound || 1}
+Current Pick Overall: ${currentPick || 1}
+User's Draft Strategy: ${userStrategy}
+User's Drafted Roster so far:
+${rosterText}
+
+Top Available Players (sorted by ADP):
+${availableListText}
+
+Based on the User's selected Draft Strategy (${userStrategy}) and their current roster needs, suggest the top 3 best players to select next from the available list.
+Make sure your recommendations are realistic, follow the chosen strategy (e.g., if Hero-RB, secure one elite RB early then focus WR; if Zero-RB, ignore RBs early and draft premium WRs; if Robust-RB, load up on top RBs early), and address structural roster balance.
+
+Return exactly 3 recommendations in the specified JSON array format.`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.5-flash',
+        contents: prompt,
+        config: {
+          systemInstruction: 'You are a veteran fantasy football draft expert. Always provide highly strategic, accurate suggestions in valid JSON format.',
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              recommendations: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    playerName: { type: Type.STRING, description: 'The exact name of the recommended player' },
+                    position: { type: Type.STRING, description: 'Player position (QB, RB, WR, TE, DEF, K)' },
+                    tier: { type: Type.INTEGER, description: 'Positional tier of the player (1-5)' },
+                    reasoning: { type: Type.STRING, description: 'Strategic reason why this player fits the roster and strategy' }
+                  },
+                  required: ['playerName', 'position', 'tier', 'reasoning']
+                }
+              }
+            },
+            required: ['recommendations']
+          }
+        }
+      });
+
+      const responseText = response.text || '';
+      const parsed = JSON.parse(responseText.trim());
+      res.json(parsed);
+    } catch (error: any) {
+      console.error('Gemini Draft Suggestion Error:', error);
+      // Fail gracefully with standard strategy recommendations
+      res.status(200).json({
+        recommendations: [
+          {
+            playerName: "Fallback Suggestion",
+            position: "WR",
+            tier: 2,
+            reasoning: "AI recommendations are compiling. Consider drafting the highest remaining ADP wide receiver or running back depending on your target strategy."
+          }
+        ]
+      });
+    }
+  });
+
+  // Get Roster Rankings Cheat Sheet for the Strategies Panel
+  app.get('/api/fantasy/rankings', (req: any, res: any) => {
+    // Group players by position
+    const positions: { [key: string]: any[] } = { QB: [], RB: [], WR: [], TE: [], DEF: [], K: [] };
+    Object.entries(nflPlayersDb).forEach(([id, player]) => {
+      positions[player.position].push({ id, ...player });
+    });
+
+    // Sort within each position by tier (ascending)
+    Object.keys(positions).forEach(pos => {
+      positions[pos].sort((a, b) => a.tier - b.tier);
+    });
+
+    res.json(positions);
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -921,7 +1412,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*all', (req, res) => {
+    app.get(/.*/, (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

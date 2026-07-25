@@ -34,6 +34,30 @@ To ensure reliable server startup during deployment rollout and cold starts:
 
 ## 🔥 Newly Appended Features
 
+### 🏈 NFL Fantasy Football Mock Draft Simulator
+An immersive, strategic draft engine matching real-world 2026 player ADPs with user-specified blueprints (e.g. Hero-RB, Zero-RB, Robust-RB) and background simulations:
+- **Hero-RB Draft Blueprint**: Tailored visual paths prioritizing elite workhorses (such as Jahmyr Gibbs or Bijan Robinson) in early rounds, followed by high-volume pass-catchers.
+- **Gemini Live Strategy Adviser**: Integrates server-side Gemini API analysis to suggest on-the-clock draft moves with strategy-based justifications.
+- **Background Monte Carlo Simulator**: Automatically calculates and updates target survival probabilities for the user's upcoming draft slot in real-time.
+- **Draft Evaluation & Coaching Report**: Scores your draft choices against selected strategy parameters, providing standard letter grades (A+ to F) and helpful coaching summaries.
+- **Share Draft Roster to Community Chat**: One-click **"Share Roster"** button in the *My Roster* draft sub-tab that compiles the user's starting lineup, total projected points, and overall draft grade, then automatically posts a live summary directly into the Community Chat room.
+
+### 📊 NFL Live-Sync Roster Optimizer & Heatmap
+A high-end, in-season optimization dashboard integrated with external league platforms:
+- **Sleeper API Gateway**: Live REST integration to pull rosters, standings, and matchups in real-time.
+- **Roster Heatmap View**: A color-coded intensity visualizer mapping player projected points against position averages:
+  - *High-Value Starters* (+3.0+ PTS over position benchmark) highlighted in bright neon green.
+  - *Above Average* (+0.8 to +3.0) in cyan.
+  - *Neutral* (-1.5 to +0.8) in muted zinc.
+  - *Below Average* (-1.5 to -3.5) in amber.
+  - *Liabilities* (-3.5+ PTS under benchmark) highlighted in red.
+  - Interactive view modes (*Matrix*, *Starters Only*, *Liabilities Only*) with toggleable heat card overlays.
+- **Tier 1-5 Dynamic Evaluation**: Pairs live athlete metrics with established positional tier lists (QB, RB, WR, TE, K, DEF).
+- **Interactive Projections & Starters Switcher**: Compares active roster points against target free agents, offering recommended swaps and transaction paths.
+
+### 🌓 Multi-Sport Visual Switcher
+An elegant visual shift system that toggles between dark Cosmic Violet (NBA) and high-contrast Turf Green/Neon (NFL) palettes, adjusting typography, gradients, borders, and contextual widgets dynamically.
+
 ### ⚔️ GOAT Battle Arena & XP Wagers
 Fans can pitch tonight's active players against supreme historical benchmarks of legendary holiday and monthly milestones (e.g., LeBron James' MLS Day peak, Nikola Jokic's Thanksgiving averages).
 - **Matchup Wagers**: Select an active player, pick a historical legend, choose a stat category (Points, Rebounds, Assists, Steals, Blocks), and stake a wager of XP.
